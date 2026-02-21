@@ -33,7 +33,7 @@ class Tester:
         return prediction, row.optionPrice, abs(prediction - row.optionPrice), row.moneyness, T
 
     #implement ability to save analysis in csv
-    def analyzeResults(results,params,saveStatistics=False):
+    def analyzeResults(results,params,showGraph,saveStatistics=False):
         ### STATISTICS ###
 
         meanPercentError = results["percentError"].mean()
@@ -42,19 +42,23 @@ class Tester:
         correlationOfTimeAndError = results["time"].corr(results["percentError"])
 
         ###TERMINAL RESPONSE###
+        results_summary = f"""
+        ### TEST RESULTS ###
 
-        print("### TEST RESULTS ###")
-        print()
-        print("## PARAMETERS ##")
-        print(f"The test used {params['paths']} paths for each of the {params['numSamples']} samples")
-        print(f"A risk free rate of {params['riskFreeRate']} was used")
-        print(f"There were {params['stepsPerYear']} steps per year for each simulation")
-        print(f"The test was run on the dataset {params['dataSet']} of {params['parity']}s")
-        print()
-        print("## STATISTICS ##")
-        print(f"The percent error had a mean of {meanPercentError} and a median of {medianPercentError}")
-        print(f"The correlation of moneyness to percent error was {correlationOfMoneynessAndError}")
-        print(f"The correlation of time to expiration to percent error was {correlationOfTimeAndError}")
+        ## PARAMETERS ##
+        The test used {params['paths']} paths for each of the {params['numSamples']} samples
+        A risk free rate of {params['riskFreeRate']} was used
+        There were {params['stepsPerYear']} steps per year for each simulation
+        The test was run on the dataset {params['dataSet']} of {params['parity']}s
+
+        ## STATISTICS ##
+        The percent error had a mean of {meanPercentError} and a median of {medianPercentError}
+        The correlation of moneyness to percent error was {correlationOfMoneynessAndError}
+        The correlation of time to expiration to percent error was {correlationOfTimeAndError}
+        """
+
+        if not showGraph:
+            return results_summary
 
         ### PLOT DATA ###
 
@@ -77,6 +81,7 @@ class Tester:
         plt.tight_layout()
         plt.show()
 
+        return results_summary
 
 
     def getSamples(numSamples,dataSet,ITMonly,OTMonly):
@@ -105,8 +110,8 @@ class Tester:
         stepsPerHour = int(input())
 
         results, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
-        Tester.analyzeResults(results,params)
+        print(Tester.analyzeResults(results,params))
 
-    def runAnalysis(paths,samples,stepsPerHour,ITMonly,OTMonly):
+    def runAnalysis(paths,samples,stepsPerHour,ITMonly,OTMonly,showGraph=False):
             results, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
-            Tester.analyzeResults(results,params)
+            return Tester.analyzeResults(results,params,showGraph)

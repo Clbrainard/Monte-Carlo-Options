@@ -116,18 +116,15 @@ class Tester:
             return Tester.analyzeResults(results,params)
     
     def analyzeVariedPathCount(testPathCounts,samples,stepsPerHour,ITMonly,OTMonly):
-        print("hello")
-        print("hello")
         results = dict.fromkeys(testPathCounts)
         for paths in testPathCounts:
             sampleResults, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
+            print(sampleResults["percentError"])
             results[paths] = sampleResults
         
         data = []
         for paths in testPathCounts:
             newData = [paths,results[paths]["percentError"].mean(),results[paths]["percentError"].median()]
-            print(f"For {paths} paths there is mean error of {newData[1]}")
-
 
 
         # Extract x, y1, and y2 using list comprehensions

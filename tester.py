@@ -116,6 +116,8 @@ class Tester:
             return Tester.analyzeResults(results,params)
     
     def analyzeVariedPathCount(testPathCounts,samples,stepsPerHour,ITMonly,OTMonly):
+        print("hello")
+        print("hello")
         results = dict.fromkeys(testPathCounts)
         for paths in testPathCounts:
             sampleResults, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)

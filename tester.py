@@ -119,7 +119,7 @@ class Tester:
         results = dict.fromkeys(testPathCounts)
         for paths in testPathCounts:
             sampleResults, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
-            print(sampleResults["percentError"])
+            print(sampleResults["percentError"].mean())
             results[paths] = sampleResults
         
         data = []

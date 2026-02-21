@@ -104,7 +104,9 @@ class Tester:
         print("How many steps per hour?")
         stepsPerHour = int(input())
 
-
-
         results, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
         Tester.analyzeResults(results,params)
+
+    def runAnalysis(paths,samples,stepsPerHour,ITMonly,OTMonly):
+            results, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
+            Tester.analyzeResults(results,params)

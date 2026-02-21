@@ -4,7 +4,6 @@ import pandas as pd
 
 
 class Tester:
-    IncludeCurrentDayInDaysToExp = True
 
     def runTest(paths,stepsPerYear,riskFreeRate,numSamples,dataSet,parity,ITMonly=False,OTMonly=False):
         samples = Tester.getSamples(numSamples,dataSet,ITMonly,OTMonly)
@@ -33,7 +32,7 @@ class Tester:
         return prediction, row.optionPrice, abs(prediction - row.optionPrice), row.moneyness, T
 
     #implement ability to save analysis in csv
-    def analyzeResults(results,params,showGraph,saveStatistics=False):
+    def analyzeResults(results,params,showGraph=False,saveStatistics=False):
         ### STATISTICS ###
 
         meanPercentError = results["percentError"].mean()
@@ -112,6 +111,45 @@ class Tester:
         results, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
         print(Tester.analyzeResults(results,params))
 
-    def runAnalysis(paths,samples,stepsPerHour,ITMonly,OTMonly,showGraph=False):
+    def runAnalysis(paths,samples,stepsPerHour,ITMonly,OTMonly):
             results, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
-            return Tester.analyzeResults(results,params,showGraph)
+            return Tester.analyzeResults(results,params)
+    
+    def analyzeVariedPathCount(testPathCounts,samples,stepsPerHour,ITMonly,OTMonly):
+        results = dict.fromkeys(testPathCounts)
+        for paths in testPathCounts:
+            sampleResults, params = Tester.runTest(paths,365*24*stepsPerHour,0.04,samples,"FridayPutSpread_MSFT","put",ITMonly,OTMonly)
+            results[paths] = sampleResults
+        
+        data = []
+        for paths in testPathCounts:
+            newData = [paths,results[paths]["percentError"].mean(),results[paths]["percentError"].median()]
+            print(f"For {paths} paths there is mean error of {newData[1]}")
+
+
+
+        # Extract x, y1, and y2 using list comprehensions
+        x_vals = [row[0] for row in data]
+        y1_vals = [row[1] for row in data]
+        y2_vals = [row[2] for row in data]
+
+        # Plot both lines on the same graph
+        plt.plot(x_vals, y1_vals, label='$y_1$', marker='o', linestyle='-')
+        plt.plot(x_vals, y2_vals, label='$y_2$', marker='s', linestyle='--')
+
+        # Add labels and legend
+        plt.xlabel('$x$')
+        plt.ylabel('$y$ Values')
+        plt.title('Comparison of $y_1$ and $y_2$')
+        plt.legend()
+        plt.grid(True)
+
+        # Save the plot
+        plt.savefig('plot.png')
+        plt.show()
+        print(data)
+
+    def analyzeVariedStepCount(paths,samples,testStepsPerHour,ITMonly,OTMonly):
+        pass
+
+Tester.analyzeVariedPathCount([25,50,100,150,200,250],50,60,False,False)

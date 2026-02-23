@@ -1,9 +1,0 @@
-[build-system]
-requires = ["setuptools>=45", "wheel", "pybind11"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "carlo_pricer"
-version = "1.0.0"
-description = "Monte Carlo Option Pricing with Longstaff-Schwartz Algorithm"
-requires-python = ">=3.6"

@@ -233,7 +233,7 @@ double runTest(int paths, int stepsPerHour,double riskFreeRate,int samples, std:
         std::vector<float> row = S[i];
         double T = row[4] / (365*24*60);
         int N = (stepsPerHour * 365 * 24) * T;
-        sum += pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1]) - row[2];
+        sum += std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1]) - row[2]) / row[2];
     }
 
     return sum/samples;
@@ -255,7 +255,7 @@ int main() {
 
     std::cout << "How many samples?" << std::endl;
     std::cin >> samples;
-
+    /*
     std::cout << "ITM or OTM only? (ITM,OTM,No)" << std::endl;
     std::cin >> choice;
 
@@ -265,7 +265,7 @@ int main() {
     else if (choice == "OTM") {
         OTMonly = true;
     }
-
+    */
     std::cout << "How many steps per hour?" << std::endl;
     std::cin >> stepsPerHour;
 
@@ -273,7 +273,7 @@ int main() {
     std::cin >> riskFreeRate;
 
     //PRESENT DATA SET CHOICE
-    std::string dataSet = "TestData/FridayPutSpread_MSFT-Simplified.csv";
+    std::string dataSet = "TestData/FridayPutSpread_MSFT-Simplified-ITM.csv";
 
     double result = runTest(paths,stepsPerHour,riskFreeRate,samples,dataSet,ITMonly,OTMonly);
 

@@ -233,7 +233,7 @@ double runTest(int paths, int stepsPerHour,double riskFreeRate,int samples, std:
         std::vector<float> row = S[i];
         double T = row[4] / (365*24*60);
         int N = (stepsPerHour * 365 * 24) * T;
-        sum += pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1]) - row[2];
+        sum += std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1]) - row[2]);
     }
 
     return sum/samples;

@@ -43,7 +43,7 @@ class GBM:
 class MonteCarloAlgorithm:
     
     @staticmethod
-    def priceOption(So,T,N,P,r,v,K,side="call"):
+    def priceOption(So,T,N,P,r,v,K,side="put"):
         
         if side == "call":
             def intrinsic(s):
@@ -90,7 +90,7 @@ class MonteCarloAlgorithm:
 
         # Create a mask where it's NOT the case that both are zero
         # The ~ is the 'NOT' operator, and & is 'AND'
-        mask = ~((X == 0) & (Y == 0))
+        mask = ~((X == 0))# & (Y == 0))
 
         # Apply the mask to both arrays
         X_filtered = X[mask]

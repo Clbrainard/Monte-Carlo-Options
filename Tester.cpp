@@ -11,29 +11,33 @@
 #include <vector>
 #include <iterator>
 #include "Eigen/Dense"
+#include <omp.h>
 
-std::vector<double> generateFlatPricePathMatrix(int P, double So, double dt, int N, double r, double v) {
-    std::vector<double> flatArray(P * N);
-    
-    static std::mt19937 gen(std::random_device{}());
-    std::normal_distribution<double> d(0.0, 1.0);
+std::vector<std::vector<double>> generateFlatPricePathMatrix(int P, double So, double dt, int N, double r, double v) {
+    std::vector<std::vector<double>> paths(P, std::vector<double>(N, 0.0));
 
     // Pre-calculate constant terms to save clock cycles inside the loop
     double drift = (r - 0.5 * v * v) * dt;
     double vol = v * std::sqrt(dt);
 
-    double last;
-    for (int p = 0; p<P; p++) {
-        last = So;
-        for (int n = 0; n<N; n++) {
-            last = last * exp(
-                ( drift + (vol * d(gen)) )
-            );
-            flatArray[(p*N)+n] = last;
+    // 2. Parallelize the outer loop (paths)
+    #pragma omp parallel
+    {
+        // Each thread gets its own unique seed using its thread ID
+        std::mt19937 gen(std::random_device{}() ^ omp_get_thread_num());
+        std::normal_distribution<double> d(0.0, 1.0);
+
+        #pragma omp for
+        for (int p = 0; p < P; p++) {
+            double last = So;
+            // The inner loop remains sequential because each step depends on the 'last' price
+            for (int n = 0; n < N; n++) {
+                last = last * std::exp(drift + (vol * d(gen)));
+                paths[p][n] = last;
+            }
         }
     }
-
-    return flatArray;
+    return paths;
 }
 
 //############################################
@@ -42,42 +46,44 @@ std::vector<double> generateFlatPricePathMatrix(int P, double So, double dt, int
 
 double pricePutOption(double So, double T, int N, int P, double r, double v, double K) {
     double dt = T / N;
-    std::vector<double> S = generateFlatPricePathMatrix(P,So,dt,N,r,v);
-    std::vector<double> C(P * N);
-    std::vector<double> O(P*N);
+    std::vector<std::vector<double>> S = generateFlatPricePathMatrix(P,So,dt,N,r,v);
+    std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
     std::vector<int> itm_indices;
-    itm_indices.reserve(P);
-    std::vector<double> X_filtered;
-    std::vector<double> Y_filtered;
-    X_filtered.reserve(P);
-    Y_filtered.reserve(P);
+    std::vector<double> X;
+    X.reserve(P/10);
+    std::vector<double> Y;
+    Y.reserve(P/10);
     double c_coeff;
     double b_coeff;
     double a_coeff;
     double EV;
 
+    #pragma omp parallel for
     for (int p = 0; p<P; p++) {
-        C[(p*N)+(N-1)] = fmax(K-S[(p*N)+(N-1)],0);
-        O[(p*N)+(N-1)] = 1;  // Always exercise at maturity
+        C[p][N-1] = fmax(K-S[p][N-1],0);
     }
     
     for (int n= N-2; n>=0; n--) {
         //get X and Y
-        X_filtered.clear();
-        Y_filtered.clear();
+        X.clear();
+        Y.clear();
         itm_indices.clear();
 
+        #pragma omp parallel for
         for (int p = 0; p<P; p++) {
-            if (K-S[p*N+n] > 0) {
-                X_filtered.push_back(S[p*N+n]);
-                Y_filtered.push_back(C[p*N+n+1] * exp(-r*dt));
-                itm_indices.push_back(p);
+            if (K-S[p][n] > 0 && C[p][n+1] > 0) {
+                #pragma omp critical
+                {
+                    X.push_back(S[p][n]);
+                    Y.push_back(C[p][n+1] * exp(-r*dt));
+                    itm_indices.push_back(p);
+                    }
             }
         }
         //std::cout << X_filtered.size();
 
         // if it is optimal to exercise nowhere in this step, skip to next step
-        if (X_filtered.size() == 0) {
+        if (X.size() == 0) {
             continue;
         }
 
@@ -85,22 +91,20 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
         //here is the part where we determine E() function
 
         //if there are less that 3 datapoints, assume E() is mean of Y_filtered
-        bool useMean = X_filtered.size() < 3;
-        if (useMean) {
-            EV = std::accumulate(Y_filtered.begin(), Y_filtered.end(), 0.0) / Y_filtered.size();
-        } else {
+        bool useReg = X.size() >2;
+        if (useReg) {
 
         //Implement more efficient way using determinants and stuff to solve linear alg problem LATER
         // for now just used gemini and eigen library
         // X and Y are your ITM prices and cash flows
-        Eigen::MatrixXd A(X_filtered.size(), 3);
-        Eigen::VectorXd b(Y_filtered.size());
+        Eigen::MatrixXd A(X.size(), 3);
+        Eigen::VectorXd b(Y.size());
 
-        for(int i = 0; i < X_filtered.size(); i++) {
+        for(int i = 0; i < X.size(); i++) {
             A(i, 0) = 1.0;          // Constant term
-            A(i, 1) = X_filtered[i];         // x term
-            A(i, 2) = X_filtered[i] * X_filtered[i];  // x^2 term
-            b(i) = Y_filtered[i];
+            A(i, 1) = X[i];         // x term
+            A(i, 2) = X[i] * X[i];  // x^2 term
+            b(i) = Y[i];
         }
 
         // The "Magic" line that replaces all the manual math:
@@ -112,33 +116,31 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
 
         }
         
+        #pragma omp parallel for
         for (int i = 0; i < itm_indices.size(); i++ ){
             int p = itm_indices[i];
-            double intrinsic = fmax(K-S[p*N+n],0);
+            double intrinsic = fmax(K-S[p][n],0);
             double expectedContinuance;
 
-            if (useMean) {
-                expectedContinuance = EV;
-                
+            if (useReg) {
+                expectedContinuance = c_coeff + (b_coeff * S[p][n]) + (a_coeff * S[p][n] * S[p][n]);
             } else {
-                expectedContinuance = c_coeff + (b_coeff * S[p*N+n]) + (a_coeff * S[p*N+n] * S[p*N+n]);
+                expectedContinuance = 0;
             }
 
             if (intrinsic > expectedContinuance) {
-                C[p*N+n] = intrinsic;
-                O[p*N+n] = 1;
-            } else {
-                C[p*N+n] = expectedContinuance;
+                C[p][n] = intrinsic;
             }
             
         }
     }
 
     double price = 0;
+    #pragma omp parallel for
     for (int p=0; p<P; p++) {
         for (int n=0; n<N; n++) {
-            if (O[p*N+n] > 0) {
-                price += C[p*N+n] * exp(-r * dt * n);
+            if (C[p][n] > 0) {
+                price += C[p][n] * exp(-r * dt * (n+1));
                 break;
             }
         }
@@ -224,7 +226,8 @@ std::vector<std::vector<float>> select_random_samples(const std::string& filenam
 double runTest(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, bool ITMonly,bool OTMonly) {
     std::vector<std::vector<float>> S = select_random_samples(dataSet,samples);
     double sum = 0;
-
+    
+    #pragma omp parallel for
     for (int i = 0; i<S.size(); i++) {
         std::vector<float> row = S[i];
         double T = row[4] / (365*24*60);
@@ -266,8 +269,10 @@ int main() {
     std::cout << "How many steps per hour?" << std::endl;
     std::cin >> stepsPerHour;
 
-    std::cout << "Risk Free Rate?" << std::endl;
-    std::cin >> riskFreeRate;
+    //RISK FREE RATE IS SET TO 0.04
+    riskFreeRate = 0.04;
+    //std::cout << "Risk Free Rate?" << std::endl;
+    //std::cin >> riskFreeRate;
 
     //PRESENT DATA SET CHOICE
     std::string dataSet = "TestData/FridayPutSpread_MSFT-Simplified-ITM.csv";
@@ -279,3 +284,4 @@ int main() {
     return 0;
 }
 
+//g++ -fopenmp Tester.cpp

@@ -1,7 +1,6 @@
 from monteCarloAlgorithm import MonteCarloAlgorithm
 import matplotlib.pyplot as plt
 import pandas as pd
-import carlo_pricer
 class Tester:
 
     def runTest(paths,stepsPerYear,riskFreeRate,numSamples,dataSet,parity,ITMonly=False,OTMonly=False):
@@ -27,7 +26,7 @@ class Tester:
     def testRow(row,paths,stepsPerYear,riskFreeRate,parity):
         T = row.minutesUntilExpiration / (365*24*60)
         steps = int(T * stepsPerYear)
-        prediction = carlo_pricer.price_put_option(row.stockPrice,T,steps,paths,riskFreeRate,row.impliedVolatility,row.strike)
+        prediction = MonteCarloAlgorithm.priceOption(row.stockPrice,T,steps,paths,riskFreeRate,row.impliedVolatility,row.strike)
         return prediction, row.optionPrice, abs(prediction - row.optionPrice), row.moneyness, T
 
     #implement ability to save analysis in csv

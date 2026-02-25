@@ -1,12 +1,10 @@
 #include <iostream>
 #include <string>
-//#include "CarloPricer"
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <algorithm>
 #include <random>
-
 #include <string>
 #include <cmath>
 #include <random>
@@ -46,51 +44,49 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
     double dt = T / N;
     std::vector<double> S = generateFlatPricePathMatrix(P,So,dt,N,r,v);
     std::vector<double> C(P * N);
+    std::vector<double> O(P*N);
     std::vector<int> itm_indices;
     itm_indices.reserve(P);
-    std::vector<double> X;
-    std::vector<double> Y;
     std::vector<double> X_filtered;
     std::vector<double> Y_filtered;
     X_filtered.reserve(P);
     Y_filtered.reserve(P);
+    double c_coeff;
+    double b_coeff;
+    double a_coeff;
+    double EV;
 
     for (int p = 0; p<P; p++) {
         C[(p*N)+(N-1)] = fmax(K-S[(p*N)+(N-1)],0);
+        O[(p*N)+(N-1)] = 1;  // Always exercise at maturity
     }
     
     for (int n= N-2; n>=0; n--) {
         //get X and Y
-        X.clear();
-        Y.clear();
         X_filtered.clear();
         Y_filtered.clear();
         itm_indices.clear();
 
         for (int p = 0; p<P; p++) {
-            X.push_back(S[p*N+n]);
-            Y.push_back(C[p*N+n+1] * exp(-r*dt));
-            if (K-X[p] > 0 || Y[p] != 0) {
-                X_filtered.push_back(X[p]);
-                Y_filtered.push_back(Y[p]);
+            if (K-S[p*N+n] > 0) {
+                X_filtered.push_back(S[p*N+n]);
+                Y_filtered.push_back(C[p*N+n+1] * exp(-r*dt));
                 itm_indices.push_back(p);
             }
         }
+        //std::cout << X_filtered.size();
 
-        // if it is optimal to continue nowhere in this step, skip to next step
+        // if it is optimal to exercise nowhere in this step, skip to next step
         if (X_filtered.size() == 0) {
             continue;
         }
 
         
-        //here is the poart where we determine E() function
+        //here is the part where we determine E() function
 
         //if there are less that 3 datapoints, assume E() is mean of Y_filtered
-        double c_coeff;
-        double b_coeff;
-        double a_coeff;
-        double EV = 0;
-        if (X_filtered.size() < 3) {
+        bool useMean = X_filtered.size() < 3;
+        if (useMean) {
             EV = std::accumulate(Y_filtered.begin(), Y_filtered.end(), 0.0) / Y_filtered.size();
         } else {
 
@@ -118,21 +114,21 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
         
         for (int i = 0; i < itm_indices.size(); i++ ){
             int p = itm_indices[i];
-            double intrinsic = fmax(K-X[p],0);
+            double intrinsic = fmax(K-S[p*N+n],0);
             double expectedContinuance;
 
-            if (intrinsic ==0 && Y[p] ==0) {
-                continue;
-            }
-
-            if (EV == 0) {
-                expectedContinuance = c_coeff + (b_coeff * X[p]) + (a_coeff * X[p] * X[p]);
-            } else {
+            if (useMean) {
                 expectedContinuance = EV;
+                
+            } else {
+                expectedContinuance = c_coeff + (b_coeff * S[p*N+n]) + (a_coeff * S[p*N+n] * S[p*N+n]);
             }
 
             if (intrinsic > expectedContinuance) {
                 C[p*N+n] = intrinsic;
+                O[p*N+n] = 1;
+            } else {
+                C[p*N+n] = expectedContinuance;
             }
             
         }
@@ -141,8 +137,8 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
     double price = 0;
     for (int p=0; p<P; p++) {
         for (int n=0; n<N; n++) {
-            if (C[p*N+n] > 0) {
-                price += C[p*N+n] * exp(-r * n * dt);
+            if (O[p*N+n] > 0) {
+                price += C[p*N+n] * exp(-r * dt * n);
                 break;
             }
         }
@@ -281,3 +277,4 @@ int main() {
 
     return 0;
 }
+

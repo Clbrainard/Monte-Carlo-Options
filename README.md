@@ -47,3 +47,105 @@ The result is the cashflow matrix should have no more than 1 nonzero value per r
 Then once the cashflow matrix is filled with the optimal stopping times, computing the option price is relatively straightforward. For each path, use the risk free rate to discount the optimal stopping time cashflow back to time step n=0. Then take the average of these discounted cashflows to get the option price.
 
 # 3. Implementation
+For this section, I will segment into the four main steps discussed in the method overview. For each step I will include snippits of code that perform the bulk of what is discussed in the step. Small code structure details may by exlcluded for ease of readability (such as variable definitions or function headers). The implementation of the pricing model is done within the following function which is what will be discussed during this section:
+```
+double pricePutOption(double So, double T, int N, int P, double r, double v, double K, double q) {....
+```
+
+### 1.Generate Price Paths
+
+In the pricing function, the price path matrix is assigned to S:
+```
+std::vector<std::vector<double>> S = generatePricePathMatrix(P,So,dt,N,r,v,q);
+```
+Using the function defined as follows:
+```
+std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v, double q) {
+    std::vector<std::vector<double>> paths(P, std::vector<double>(N, 0.0));
+
+    // Pre-calculate constant terms to save clock cycles inside the loop
+    double drift = (r - 0.5 * v * v) * dt;
+    double vol = v * std::sqrt(dt);
+
+    std::mt19937 gen(std::random_device{}());
+    std::normal_distribution<double> d(0.0, 1.0);
+
+    for (int p = 0; p < P; p++) {
+        double last = So;
+
+        for (int n = 0; n < N; n++) {
+            last = last * std::exp(drift + (vol * d(gen)));
+            paths[p][n] = last;
+        }
+    }
+
+    return paths;
+}
+```
+### 2. Generate cashflow matrix
+The cashflow matrix is defined given the price path matrix S defined in previous step
+```
+std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
+
+for (int p = 0; p<P; p++) {
+C[p][N-1] = fmax(K-S[p][N-1],0);
+}
+```
+
+### 3. Fills cashflow matrix with the optimal stopping times
+
+```
+for (int n= N-2; n>=0; n--) {
+        //get X and Y
+        X.clear();
+        Y.clear();
+        itm_indices.clear();
+
+        for (int p = 0; p<P; p++) {
+            if (K-S[p][n] > 0 && C[p][n+1] > 0) {
+                    X.push_back(S[p][n]);
+                    Y.push_back(C[p][n+1] * exp(-r*dt));
+                    itm_indices.push_back(p);
+            }
+        }
+        //std::cout << X_filtered.size();
+
+        // if it is optimal to exercise nowhere in this step, skip to next step
+        if (X.size() == 0) {
+            continue;
+        }
+
+        
+        //here is the part where we determine E() function
+
+        //if there are less that 3 datapoints, assume E() is mean of Y_filtered
+        bool useReg = X.size() >2;
+        if (useReg) {
+            std::vector<double> solution  = quadRegress(X,Y);
+            c_coeff = solution[0];
+            b_coeff = solution[1];
+            a_coeff = solution[2];
+        }
+        
+        for (int i = 0; i < itm_indices.size(); i++ ){
+            int p = itm_indices[i];
+            double intrinsic = fmax(K-S[p][n],0);
+            double expectedContinuance;
+
+            if (useReg) {
+                expectedContinuance = c_coeff + (b_coeff * S[p][n]) + (a_coeff * S[p][n] * S[p][n]);
+            } else {
+                expectedContinuance = 0;
+            }
+
+            if (intrinsic > expectedContinuance) {
+                C[p][n] = intrinsic;
+            }
+            
+        }
+}
+```
+
+### 4. Computes price using stopping times
+
+# 4. Model Evaluation

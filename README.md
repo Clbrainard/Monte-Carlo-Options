@@ -63,7 +63,6 @@ Using the function defined as follows:
 std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v, double q) {
     std::vector<std::vector<double>> paths(P, std::vector<double>(N, 0.0));
 
-    // Pre-calculate constant terms to save clock cycles inside the loop
     double drift = (r - 0.5 * v * v) * dt;
     double vol = v * std::sqrt(dt);
 
@@ -108,17 +107,15 @@ for (int n= N-2; n>=0; n--) {
                     itm_indices.push_back(p);
             }
         }
-        //std::cout << X_filtered.size();
 
         // if it is optimal to exercise nowhere in this step, skip to next step
         if (X.size() == 0) {
             continue;
         }
-
         
         //here is the part where we determine E() function
 
-        //if there are less that 3 datapoints, assume E() is mean of Y_filtered
+        //if there are less that 3 datapoints, assume E() is zero
         bool useReg = X.size() >2;
         if (useReg) {
             std::vector<double> solution  = quadRegress(X,Y);
@@ -149,7 +146,6 @@ for (int n= N-2; n>=0; n--) {
 ### 4. Computes price using stopping times
 ```c++
 double price = 0;
-    #pragma omp parallel for
     for (int p=0; p<P; p++) {
         for (int n=0; n<N; n++) {
             if (C[p][n] > 0) {
@@ -162,3 +158,5 @@ double price = 0;
 return price/P;
 ```
 # 4. Model Evaluation
+
+

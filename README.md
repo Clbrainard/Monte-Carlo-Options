@@ -48,18 +48,18 @@ Then once the cashflow matrix is filled with the optimal stopping times, computi
 
 # 3. Implementation
 For this section, I will segment into the four main steps discussed in the method overview. For each step I will include snippits of code that perform the bulk of what is discussed in the step. Small code structure details may by exlcluded for ease of readability (such as variable definitions or function headers). The implementation of the pricing model is done within the following function which is what will be discussed during this section:
-```
+```c++
 double pricePutOption(double So, double T, int N, int P, double r, double v, double K, double q) {....
 ```
 
 ### 1.Generate Price Paths
 
 In the pricing function, the price path matrix is assigned to S:
-```
+```c++
 std::vector<std::vector<double>> S = generatePricePathMatrix(P,So,dt,N,r,v,q);
 ```
 Using the function defined as follows:
-```
+```c++
 std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v, double q) {
     std::vector<std::vector<double>> paths(P, std::vector<double>(N, 0.0));
 
@@ -84,7 +84,7 @@ std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, doubl
 ```
 ### 2. Generate cashflow matrix
 The cashflow matrix is defined given the price path matrix S defined in previous step
-```
+```c++
 std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
 
 for (int p = 0; p<P; p++) {
@@ -94,7 +94,7 @@ C[p][N-1] = fmax(K-S[p][N-1],0);
 
 ### 3. Fills cashflow matrix with the optimal stopping times
 
-```
+```c++
 for (int n= N-2; n>=0; n--) {
         //get X and Y
         X.clear();
@@ -147,5 +147,18 @@ for (int n= N-2; n>=0; n--) {
 ```
 
 ### 4. Computes price using stopping times
+```c++
+double price = 0;
+    #pragma omp parallel for
+    for (int p=0; p<P; p++) {
+        for (int n=0; n<N; n++) {
+            if (C[p][n] > 0) {
+                price += C[p][n] * exp(-r * dt * (n+1));
+                break;
+            }
+        }
+    }
 
+return price/P;
+```
 # 4. Model Evaluation

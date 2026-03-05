@@ -163,7 +163,7 @@ The codebase includes a build in testing function. It passes in the number of sa
 
 underlying security price, strike price, option market price, volatility, minutes to expiry
 
-```
+```c++
 double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, bool ITMonly,bool OTMonly) {
     std::vector<std::vector<float>> S = select_random_samples(dataSet,samples);
     double sum = 0;

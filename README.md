@@ -159,5 +159,29 @@ return price/P;
 ```
 # 4. Model Evaluation
 
+The codebase includes a build in testing function. It passes in the number of samples and dataset directory as arguements, then selects the samples randomly from the dataset. Then for each sample, it computes the percent error between the predicited and actual option price. The dataset is assumed to be in the following format:
+
+underlying security price, strike price, option market price, volatility, minutes to expiry
+
+```
+double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, bool ITMonly,bool OTMonly) {
+    std::vector<std::vector<float>> S = select_random_samples(dataSet,samples);
+    double sum = 0;
+    
+    #pragma omp parallel for
+    for (int i = 0; i<S.size(); i++) {
+        std::vector<float> row = S[i];
+        double T = row[4] / (365*24*60);
+        int N = (stepsPerHour * 365 * 24) * T;
+        sum += (std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1],row[6]) - row[2]) / row[2])*100;
+
+    }
+
+    return sum/samples;
+}
+```
+
+The runTestME function returns the average percent error of the random samples extracted from the dataset. Included is also a function that returns the mean squared error (runTestMSE). In the repository is a dataset of Microsoft put options, along with others I am working on adding. There are mutliple CSV files for the same samples, such as the ITM dataset which includes only samples with a moneyness greater than 1. Each dataset includes dividend yield and moneyness along with the expected data.
+
 
 

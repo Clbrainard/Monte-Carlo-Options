@@ -1,5 +1,4 @@
 #include <iostream>
-#include <string>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -7,46 +6,67 @@
 #include <random>
 #include <string>
 #include <cmath>
-#include <random>
-#include <vector>
 #include <iterator>
-#include "Eigen/Dense"
+#include <chrono>
+
 #include <omp.h>
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
+#include <cusolverDn.h>
+#include <cublas_v2.h>
 
-std::vector<std::vector<double>> generateFlatPricePathMatrix(int P, double So, double dt, int N, double r, double v) {
-    std::vector<std::vector<double>> paths(P, std::vector<double>(N, 0.0));
 
-    // Pre-calculate constant terms to save clock cycles inside the loop
-    double drift = (r - 0.5 * v * v) * dt;
-    double vol = v * std::sqrt(dt);
 
-    // 2. Parallelize the outer loop (paths)
-    #pragma omp parallel
-    {
-        // Each thread gets its own unique seed using its thread ID
-        std::mt19937 gen(std::random_device{}() ^ omp_get_thread_num());
-        std::normal_distribution<double> d(0.0, 1.0);
 
-        #pragma omp for
-        for (int p = 0; p < P; p++) {
-            double last = So;
-            // The inner loop remains sequential because each step depends on the 'last' price
-            for (int n = 0; n < N; n++) {
-                last = last * std::exp(drift + (vol * d(gen)));
-                paths[p][n] = last;
-            }
+// The Kernel: Each thread calculates ONE full path
+__global__ void generatePathsKernel(double* d_paths, int P, int N, double So, double drift, double vol, unsigned long seed) {
+    int p = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (p < P) {
+        // Each thread needs its own random state
+        curandState state;
+        curand_init(seed, p, 0, &state);
+
+        double last = So;
+        for (int n = 0; n < N; n++) {
+            double gauss = curand_normal_double(&state);
+            last = last * exp(drift + (vol * gauss));
+            // Store in flat 1D array (Row-Major: path * total_steps + current_step)
+            d_paths[p * N + n] = last;
         }
     }
-    return paths;
 }
 
+// Host Wrapper Function
+std::vector<double> generateCudaPricePathMatrix(int P, double So, double dt, int N, double r, double v) {
+    size_t size = P * N * sizeof(double);
+    std::vector<double> h_paths(P * N);
+    
+    double* d_paths;
+    cudaMalloc(&d_paths, size);
+
+    double drift = (r - 0.5 * v * v) * dt;
+    double vol = v * sqrt(dt);
+
+    // Launch configuration
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (P + threadsPerBlock - 1) / threadsPerBlock;
+
+    generatePathsKernel<<<blocksPerGrid, threadsPerBlock>>>(d_paths, P, N, So, drift, vol, time(NULL));
+
+    // Copy results back to CPU
+    cudaMemcpy(h_paths.data(), d_paths, size, cudaMemcpyDeviceToHost);
+    
+    cudaFree(d_paths);
+    return h_paths;
+}
 //############################################
 //          PUT IMPLEMENTATION
 //############################################
 
 double pricePutOption(double So, double T, int N, int P, double r, double v, double K) {
     double dt = T / N;
-    std::vector<std::vector<double>> S = generateFlatPricePathMatrix(P,So,dt,N,r,v);
+    std::vector<double> S = generateCudaPricePathMatrix(P,So,dt,N,r,v);
     std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
     std::vector<int> itm_indices;
     std::vector<double> X;
@@ -60,7 +80,7 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
 
     #pragma omp parallel for
     for (int p = 0; p<P; p++) {
-        C[p][N-1] = fmax(K-S[p][N-1],0);
+        C[p][N-1] = fmax(K-S[(p*N)+N-1],0);
     }
     
     for (int n= N-2; n>=0; n--) {
@@ -71,10 +91,10 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
 
         #pragma omp parallel for
         for (int p = 0; p<P; p++) {
-            if (K-S[p][n] > 0 && C[p][n+1] > 0) {
+            if (K-S[(p*N)+n] > 0 && C[p][n+1] > 0) {
                 #pragma omp critical
                 {
-                    X.push_back(S[p][n]);
+                    X.push_back(S[(p*N)+n]);
                     Y.push_back(C[p][n+1] * exp(-r*dt));
                     itm_indices.push_back(p);
                     }
@@ -91,39 +111,21 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
         //here is the part where we determine E() function
 
         //if there are less that 3 datapoints, assume E() is mean of Y_filtered
-        bool useReg = X.size() >2;
+        std::vector<double> coefs;
+        bool useReg = X.size() > 2;
         if (useReg) {
-
-        //Implement more efficient way using determinants and stuff to solve linear alg problem LATER
-        // for now just used gemini and eigen library
-        // X and Y are your ITM prices and cash flows
-        Eigen::MatrixXd A(X.size(), 3);
-        Eigen::VectorXd b(Y.size());
-
-        for(int i = 0; i < X.size(); i++) {
-            A(i, 0) = 1.0;          // Constant term
-            A(i, 1) = X[i];         // x term
-            A(i, 2) = X[i] * X[i];  // x^2 term
-            b(i) = Y[i];
-        }
-
-        // The "Magic" line that replaces all the manual math:
-        Eigen::Vector3d beta = A.householderQr().solve(b);
-
-        c_coeff = beta(0); // intercept
-        b_coeff = beta(1); // x coefficient
-        a_coeff = beta(2); // x^2 coefficient
-
+            // in format {intercept, x coef, x^2 coef}
+            coefs = {0,0,0};//solveQuadraticRegression(X, Y);
         }
         
         #pragma omp parallel for
         for (int i = 0; i < itm_indices.size(); i++ ){
             int p = itm_indices[i];
-            double intrinsic = fmax(K-S[p][n],0);
+            double intrinsic = fmax(K-S[(p*N)+n],0);
             double expectedContinuance;
 
             if (useReg) {
-                expectedContinuance = c_coeff + (b_coeff * S[p][n]) + (a_coeff * S[p][n] * S[p][n]);
+                expectedContinuance = coefs[2] + (coefs[1] * S[(p*N)+n]) + (coefs[0]* S[(p*N)+n] * S[(p*N)+n]);
             } else {
                 expectedContinuance = 0;
             }
@@ -227,7 +229,6 @@ double runTest(int paths, int stepsPerHour,double riskFreeRate,int samples, std:
     std::vector<std::vector<float>> S = select_random_samples(dataSet,samples);
     double sum = 0;
     
-    #pragma omp parallel for
     for (int i = 0; i<S.size(); i++) {
         std::vector<float> row = S[i];
         double T = row[4] / (365*24*60);
@@ -275,9 +276,21 @@ int main() {
     //std::cin >> riskFreeRate;
 
     //PRESENT DATA SET CHOICE
-    std::string dataSet = "TestData/FridayPutSpread_MSFT-Simplified-ITM.csv";
+    std::string dataSet = "TestData/FridayPutSpread_MSFT-Simplified.csv";
+    /*
+    auto start = std::chrono::high_resolution_clock::now();
 
     double result = runTest(paths,stepsPerHour,riskFreeRate,samples,dataSet,ITMonly,OTMonly);
+
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // Print directly in seconds
+    std::cout << "Total runtime: " 
+              << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() 
+              << " seconds." << std::endl;
+    */
+    double result = runTest(paths,stepsPerHour,riskFreeRate,samples,dataSet,ITMonly,OTMonly);
+
 
     std::cout << "Mean Percent Error:" << result;
 
@@ -286,3 +299,5 @@ int main() {
 
 //C:\msys64\ucrt64\bin\g++.exe -fopenmp Tester.cpp -o Tester.exe
 //C:\msys64\ucrt64\bin\g++ -fopenmp Tester.cpp
+//nvcc CudaRewrite.cu -o my_sim -lcurand
+//nvcc CudaRewrite.cu -o my_sim -lcurand -lcusolver -lcublas

@@ -1,4 +1,4 @@
-Column 1,Column 2,Column 3,Column 4,Column 5,Column 6,Column 7
+stockPrice,strike,optPrice,volatility,minutesUntilExpiry,moneyness,divYield
 397.14,397.5,5.93,0.27,10086,1.000906481,0.009
 397.12,397.5,4.89,0.25,7206,1.00095689,0.009
 397.28,400,26.7,0.31,169926,1.006846557,0.009

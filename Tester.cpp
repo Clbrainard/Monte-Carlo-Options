@@ -167,10 +167,14 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
         //if there are less that 3 datapoints, assume E() is mean of Y_filtered
         bool useReg = X.size() >2;
         if (useReg) {
-            std::vector<double> solution  = quadRegress(X,Y);
-            c_coeff = solution[0];
-            b_coeff = solution[1];
-            a_coeff = solution[2];
+            try {
+                std::vector<double> solution  = quadRegress(X,Y);
+                c_coeff = solution[0];
+                b_coeff = solution[1];
+                a_coeff = solution[2];
+            } catch (const std::runtime_error&) {
+                useReg = false;
+            }
         }
         
         for (int i = 0; i < itm_indices.size(); i++ ){
@@ -311,7 +315,7 @@ int main() {
 
     int numTests = 10;
     int numSamples = 30;
-    std::vector<double> pathSched = {10,50,100,250,500,1000,5000,10000};
+    std::vector<double> pathSched = {10,50,100,250,500,1000,5000};
     std::vector<double> stepSched = {5,10,15,30,60};
 
     //PRESENT DATA SET CHOICE
@@ -323,9 +327,13 @@ int main() {
         for (int z = 0; z<8; z++) {
             std::ofstream file("data.csv", std::ios::app);
             for (int n = 0; n<5; n++) {
+                auto start = std::chrono::high_resolution_clock::now();
                 double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,gen,batch);
-                std::cout << "Path count: " << pathSched[z] << "; Step per min: " << stepSched[n] << "; Mean error of: " << result << "\n";
-                file << pathSched[z] << "," << stepSched[n] << "," << result << "\n";
+                auto end = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> elapsed = end - start;
+
+                std::cout << "Path count: " << pathSched[z] << "; Step per min: " << stepSched[n] << "; Mean error of: " << result << "; In " << elapsed.count() << " seconds \n";
+                file << pathSched[z] << "," << stepSched[n] << "," << result << "," << elapsed.count() << "\n";
             }
         }
     }
@@ -333,5 +341,3 @@ int main() {
     return 0;
 }
 
-//C:\msys64\ucrt64\bin\g++.exe -fopenmp Tester.cpp -o Tester.exe
-//C:\msys64\ucrt64\bin\g++ -fopenmp Tester.cpp

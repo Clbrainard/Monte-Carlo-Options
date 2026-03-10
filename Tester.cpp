@@ -9,6 +9,15 @@
 #include <iterator>
 #include "Eigen/Dense"
 #include <omp.h>
+#include <ctime>
+#include <chrono>
+
+int current_minute() {
+        auto now = std::chrono::system_clock::now();
+        std::time_t t = std::chrono::system_clock::to_time_t(now);
+        std::tm* local = std::localtime(&t);
+        return local->tm_min;
+}
 
 std::vector<double> solveQuadraticLLT(
     double n,
@@ -70,19 +79,31 @@ std::vector<double> quadRegress(std::vector<double> X, std::vector<double> Y) {
         Sy  += yi;
         Sxy += xi * yi;
     }
-    return solveQuadraticLLT(n,Sx,Sx2,Sx3,Sx4,Sy,Sxy,Sx2y);
+    Eigen::Matrix3d A;
+    A << n,   Sx,  Sx2,
+         Sx,  Sx2, Sx3,
+         Sx2, Sx3, Sx4;
 
+    Eigen::Vector3d b(Sy, Sxy, Sx2y);
+
+    Eigen::LLT<Eigen::Matrix3d> llt(A);
+    if (llt.info() != Eigen::Success) {
+        throw std::runtime_error("Cholesky failed (matrix not SPD)");
+    }
+
+    Eigen::Vector3d c = llt.solve(b);
+
+    return { c(0), c(1), c(2) };
 
 }
 
-std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v) {
+std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v, std::mt19937 &gen) {
     std::vector<std::vector<double>> paths(P, std::vector<double>(N, 0.0));
 
     // Pre-calculate constant terms to save clock cycles inside the loop
     double drift = (r - 0.5 * v * v) * dt;
     double vol = v * std::sqrt(dt);
 
-    std::mt19937 gen(std::random_device{}());
     std::normal_distribution<double> d(0.0, 1.0);
 
     for (int p = 0; p < P; p++) {
@@ -101,9 +122,9 @@ std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, doubl
 //          PUT IMPLEMENTATION
 //############################################
 
-double pricePutOption(double So, double T, int N, int P, double r, double v, double K) {
+double pricePutOption(double So, double T, int N, int P, double r, double v, double K, std::mt19937 &gen) {
     double dt = T / N;
-    std::vector<std::vector<double>> S = generatePricePathMatrix(P,So,dt,N,r,v);
+    std::vector<std::vector<double>> S = generatePricePathMatrix(P,So,dt,N,r,v,gen);
     std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
     std::vector<int> itm_indices;
     std::vector<double> X;
@@ -183,7 +204,7 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
     return price/P;
 }
 
-std::vector<std::vector<float>> select_random_samples(const std::string& filename, int s) {
+std::vector<std::vector<float>> select_random_samples(const std::string& filename, int s, std::mt19937 &gen) {
     std::ifstream file(filename);
     std::string line;
     std::vector<std::vector<float>> all_data;
@@ -243,22 +264,18 @@ std::vector<std::vector<float>> select_random_samples(const std::string& filenam
             all_data.push_back(row_values);
         }
     }
-    // 3. Shuffle and Sample
-    std::random_device rd;
-    std::mt19937 g(rd());
 
     // Ensure we don't try to sample more rows than exist
     size_t sample_size = std::min(static_cast<size_t>(s), all_data.size());
 
     // We shuffle the whole vector and then slice the first 's' elements
-    std::shuffle(all_data.begin(), all_data.end(), g);
+    std::shuffle(all_data.begin(), all_data.end(), gen);
 
     // Return the subset
     return std::vector<std::vector<float>>(all_data.begin(), all_data.begin() + sample_size);
 }
 
-double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, bool ITMonly,bool OTMonly) {
-    std::vector<std::vector<float>> S = select_random_samples(dataSet,samples);
+double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, std::mt19937 &gen, std::vector<std::vector<float>> S) {
     double sum = 0;
     
     #pragma omp parallel for
@@ -266,69 +283,52 @@ double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, st
         std::vector<float> row = S[i];
         double T = row[4] / (365*24*60);
         int N = (stepsPerHour * 365 * 24) * T;
-        sum += (std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1]) - row[2]) / row[2])*100;
+        sum += (std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1],gen) - row[2]) / row[2])*100;
 
     }
 
-    return sum/samples;
-}
-
-double runTestMSE(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, bool ITMonly,bool OTMonly) {
-    std::vector<std::vector<float>> S = select_random_samples(dataSet,samples);
-    double sum = 0;
-    
-    #pragma omp parallel for
-    for (int i = 0; i<S.size(); i++) {
-        std::vector<float> row = S[i];
-        double T = row[4] / (365*24*60);
-        int N = (stepsPerHour * 365 * 24) * T;
-        double pred = pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1]);
-        sum += (((pred*pred) - row[2]) / row[2])*100;
-    }
     return sum/samples;
 }
 
 int main() {
-    bool ITMonly = false;
-    bool OTMonly = false;
-
+    std::cout << "Starting program" << std::endl;
+    double riskFreeRate = 0.04;
+    /*
     int paths;
     int samples;
     int stepsPerHour;
-    double riskFreeRate;
-
-    std::string choice;
 
     std::cout << "How many paths?" << std::endl;
     std::cin >> paths;
 
     std::cout << "How many samples?" << std::endl;
     std::cin >> samples;
-    /*
-    std::cout << "ITM or OTM only? (ITM,OTM,No)" << std::endl;
-    std::cin >> choice;
 
-    if (choice == "ITM") {
-        ITMonly = true;
-    }
-    else if (choice == "OTM") {
-        OTMonly = true;
-    }
-    */
     std::cout << "How many steps per hour?" << std::endl;
     std::cin >> stepsPerHour;
+    */
+   
 
-    //RISK FREE RATE IS SET TO 0.04
-    riskFreeRate = 0.04;
-    //std::cout << "Risk Free Rate?" << std::endl;
-    //std::cin >> riskFreeRate;
+    int numTests = 10;
+    int numSamples = 30;
+    std::vector<double> pathSched = {10,50,100,250,500,1000,5000,10000};
+    std::vector<double> stepSched = {5,10,15,30,60};
 
     //PRESENT DATA SET CHOICE
-    std::string dataSet = "TestData/FridayPutSpread_MSFT-Simplified-ITM.csv";
+    std::string dataSet = "TestData/FridayPutSpread_MSFT.csv";
 
-    double result = runTestME(paths,stepsPerHour,riskFreeRate,samples,dataSet,ITMonly,OTMonly);
-
-    std::cout << "Mean Percent Error:" << result << "%";
+    for (int t = 0; t<numTests; t++) {
+        std::mt19937 gen(current_minute());
+        std::vector<std::vector<float>> batch = select_random_samples(dataSet,numSamples,gen);
+        for (int z = 0; z<8; z++) {
+            std::ofstream file("data.csv", std::ios::app);
+            for (int n = 0; n<5; n++) {
+                double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,gen,batch);
+                std::cout << "Path count: " << pathSched[z] << "; Step per min: " << stepSched[n] << "; Mean error of: " << result << "\n";
+                file << pathSched[z] << "," << stepSched[n] << "," << result << "\n";
+            }
+        }
+    }
 
     return 0;
 }

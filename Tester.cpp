@@ -12,6 +12,10 @@
 #include <ctime>
 #include <chrono>
 
+// Matrix A stored as flat vector in row-major order
+// A[p][n] is stored at A[p * N + n]
+// P = number of rows, N = number of columns
+
 int current_minute() {
         auto now = std::chrono::system_clock::now();
         std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -19,66 +23,35 @@ int current_minute() {
         return local->tm_min;
 }
 
-std::vector<double> solveQuadraticLLT(
-    double n,
-    double Sx,
-    double Sx2,
-    double Sx3,
-    double Sx4,
-    double Sy,
-    double Sxy,
-    double Sx2y
-) {
-    Eigen::Matrix3d A;
-    A << n,   Sx,  Sx2,
-         Sx,  Sx2, Sx3,
-         Sx2, Sx3, Sx4;
+std::vector<double> quadRegress(const std::vector<double>& X, const std::vector<double>& Y) {
+    const int n = X.size();
 
-    Eigen::Vector3d b(Sy, Sxy, Sx2y);
+    double Sx = 0.0;
+    double Sx2 = 0.0;
+    double Sx3 = 0.0;
+    double Sx4 = 0.0;
+    double Sy = 0.0;
+    double Sxy = 0.0;
+    double Sx2y = 0.0;
 
-    Eigen::LLT<Eigen::Matrix3d> llt(A);
-    if (llt.info() != Eigen::Success) {
-        throw std::runtime_error("Cholesky failed (matrix not SPD)");
-    }
-
-    Eigen::Vector3d c = llt.solve(b);
-
-    return { c(0), c(1), c(2) };
-}
-
-std::vector<double> quadRegress(std::vector<double> X, std::vector<double> Y) {
-    int n = X.size();
-    double Sx = 0;
-    double Sx2 = 0;
-    double Sx3 = 0;
-    double Sx4 = 0;
-    double Sx5 = 0;
-    double Sy = 0;
-    double Sxy = 0;
-    double Sx2y = 0;
-    for (size_t i = 0; i < n; ++i) {
+    for (int i = 0; i < n; ++i) {
         const double xi = X[i];
         const double yi = Y[i];
 
-        double x_pow = xi;        // x
-        Sx += x_pow;
+        const double x2 = xi * xi;
+        const double x3 = x2 * xi;
+        const double x4 = x3 * xi;
 
-        x_pow *= xi;              // x^2
-        Sx2 += x_pow;
-        Sx2y += x_pow * yi;
+        Sx   += xi;
+        Sx2  += x2;
+        Sx3  += x3;
+        Sx4  += x4;
 
-        x_pow *= xi;              // x^3
-        Sx3 += x_pow;
-
-        x_pow *= xi;              // x^4
-        Sx4 += x_pow;
-
-        x_pow *= xi;              // x^5
-        Sx5 += x_pow;
-
-        Sy  += yi;
-        Sxy += xi * yi;
+        Sy   += yi;
+        Sxy  += xi * yi;
+        Sx2y += x2 * yi;
     }
+
     Eigen::Matrix3d A;
     A << n,   Sx,  Sx2,
          Sx,  Sx2, Sx3,
@@ -93,12 +66,11 @@ std::vector<double> quadRegress(std::vector<double> X, std::vector<double> Y) {
 
     Eigen::Vector3d c = llt.solve(b);
 
-    return { c(0), c(1), c(2) };
-
+    return {c(0), c(1), c(2)};
 }
 
-std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v, std::mt19937 &gen) {
-    std::vector<std::vector<double>> paths(P, std::vector<double>(N, 0.0));
+std::vector<double> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v, std::mt19937 &gen) {
+    std::vector<double> paths(P * N);
 
     // Pre-calculate constant terms to save clock cycles inside the loop
     double drift = (r - 0.5 * v * v) * dt;
@@ -111,7 +83,7 @@ std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, doubl
 
         for (int n = 0; n < N; n++) {
             last = last * std::exp(drift + (vol * d(gen)));
-            paths[p][n] = last;
+            paths[(p*N)+n] = last;
         }
     }
 
@@ -124,7 +96,7 @@ std::vector<std::vector<double>> generatePricePathMatrix(int P, double So, doubl
 
 double pricePutOption(double So, double T, int N, int P, double r, double v, double K, std::mt19937 &gen) {
     double dt = T / N;
-    std::vector<std::vector<double>> S = generatePricePathMatrix(P,So,dt,N,r,v,gen);
+    std::vector<double> S = generatePricePathMatrix(P,So,dt,N,r,v,gen);
     std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
     std::vector<int> itm_indices;
     std::vector<double> X;
@@ -138,7 +110,7 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
 
 
     for (int p = 0; p<P; p++) {
-        C[p][N-1] = fmax(K-S[p][N-1],0);
+        C[p][N-1] = fmax(K-S[(p*N)+N-1],0);
     }
     
     for (int n= N-2; n>=0; n--) {
@@ -148,8 +120,8 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
         itm_indices.clear();
 
         for (int p = 0; p<P; p++) {
-            if (K-S[p][n] > 0 && C[p][n+1] > 0) {
-                    X.push_back(S[p][n]);
+            if (K-S[(p*N)+n] > 0 && C[p][n+1] > 0) {
+                    X.push_back(S[(p*N)+n]);
                     Y.push_back(C[p][n+1] * exp(-r*dt));
                     itm_indices.push_back(p);
             }
@@ -179,11 +151,11 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
         
         for (int i = 0; i < itm_indices.size(); i++ ){
             int p = itm_indices[i];
-            double intrinsic = fmax(K-S[p][n],0);
+            double intrinsic = fmax(K-S[(p*N)+n],0);
             double expectedContinuance;
 
             if (useReg) {
-                expectedContinuance = c_coeff + (b_coeff * S[p][n]) + (a_coeff * S[p][n] * S[p][n]);
+                expectedContinuance = c_coeff + (b_coeff * S[(p*N)+n]) + (a_coeff * S[(p*N)+n] * S[(p*N)+n]);
             } else {
                 expectedContinuance = 0;
             }
@@ -279,7 +251,10 @@ std::vector<std::vector<float>> select_random_samples(const std::string& filenam
     return std::vector<std::vector<float>>(all_data.begin(), all_data.begin() + sample_size);
 }
 
-double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, std::mt19937 &gen, std::vector<std::vector<float>> S) {
+double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, int seed) {
+    std::mt19937 gen(seed);
+    std::vector<std::vector<float>> S = select_random_samples(dataSet,samples,gen);
+
     double sum = 0;
     
     #pragma omp parallel for
@@ -295,23 +270,7 @@ double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, st
 }
 
 int main() {
-    std::cout << "Starting program" << std::endl;
     double riskFreeRate = 0.04;
-    /*
-    int paths;
-    int samples;
-    int stepsPerHour;
-
-    std::cout << "How many paths?" << std::endl;
-    std::cin >> paths;
-
-    std::cout << "How many samples?" << std::endl;
-    std::cin >> samples;
-
-    std::cout << "How many steps per hour?" << std::endl;
-    std::cin >> stepsPerHour;
-    */
-   
 
     int numTests = 10;
     int numSamples = 30;
@@ -321,23 +280,26 @@ int main() {
     //PRESENT DATA SET CHOICE
     std::string dataSet = "TestData/FridayPutSpread_MSFT.csv";
 
-    for (int t = 0; t<numTests; t++) {
-        std::mt19937 gen(current_minute());
-        std::vector<std::vector<float>> batch = select_random_samples(dataSet,numSamples,gen);
-        for (int z = 0; z<8; z++) {
-            std::ofstream file("data.csv", std::ios::app);
-            for (int n = 0; n<5; n++) {
+    std::ofstream file("data.csv", std::ios::app);
+    for (int z = 0; z<8; z++) {
+        for (int n = 0; n<5; n++) {
+            double elapsedSum = 0;
+            double resultSum = 0;
+            for (int t = 0; t<numTests; t++) {
+                int seed = current_minute();
                 auto start = std::chrono::high_resolution_clock::now();
-                double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,gen,batch);
+                double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,seed);
                 auto end = std::chrono::high_resolution_clock::now();
                 std::chrono::duration<double> elapsed = end - start;
 
-                std::cout << "Path count: " << pathSched[z] << "; Step per min: " << stepSched[n] << "; Mean error of: " << result << "; In " << elapsed.count() << " seconds \n";
-                file << pathSched[z] << "," << stepSched[n] << "," << result << "," << elapsed.count() << "\n";
+                elapsedSum += elapsed.count();
+                resultSum += result;
             }
+            file << pathSched[z] << "," << stepSched[n] << "," << resultSum/numTests << "," << elapsedSum/numTests << "\n";
+            file.flush();
         }
     }
+    file.close();
 
     return 0;
 }
-

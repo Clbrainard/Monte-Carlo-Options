@@ -11,10 +11,21 @@
 #include <omp.h>
 #include <ctime>
 #include <chrono>
+#include <thread>
 
 // Matrix A stored as flat vector in row-major order
 // A[p][n] is stored at A[p * N + n]
 // P = number of rows, N = number of columns
+
+#include <chrono>
+
+long long current_milliseconds() {
+    using namespace std::chrono;
+
+    return duration_cast<milliseconds>(
+        system_clock::now().time_since_epoch()
+    ).count();
+}
 
 int current_minute() {
         auto now = std::chrono::system_clock::now();
@@ -69,22 +80,72 @@ std::vector<double> quadRegress(const std::vector<double>& X, const std::vector<
     return {c(0), c(1), c(2)};
 }
 
-std::vector<double> generatePricePathMatrix(int P, double So, double dt, int N, double r, double v, std::mt19937 &gen) {
+void generatePathBlock(
+    std::vector<double>& paths,
+    int pStart,
+    int pEnd,
+    double So,
+    int N,
+    double drift,
+    double vol,
+    unsigned int seed
+) {
+    std::mt19937 gen(seed);
+    std::normal_distribution<double> d(0.0, 1.0);
+
+    for (int p = pStart; p < pEnd; ++p) {
+        double last = So;
+        int rowStart = p * N;
+
+        for (int n = 0; n < N; ++n) {
+            last *= std::exp(drift + vol * d(gen));
+            paths[rowStart + n] = last;
+        }
+    }
+}
+
+std::vector<double> generatePricePathMatrix(
+    int P, double So, double dt, int N, double r, double v
+) {
     std::vector<double> paths(P * N);
 
-    // Pre-calculate constant terms to save clock cycles inside the loop
     double drift = (r - 0.5 * v * v) * dt;
     double vol = v * std::sqrt(dt);
 
-    std::normal_distribution<double> d(0.0, 1.0);
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    if (numThreads == 0) {
+        numThreads = 4;
+    }
+    numThreads = std::min<unsigned int>(numThreads, P);
 
-    for (int p = 0; p < P; p++) {
-        double last = So;
+    std::vector<std::thread> threads;
+    threads.reserve(numThreads);
 
-        for (int n = 0; n < N; n++) {
-            last = last * std::exp(drift + (vol * d(gen)));
-            paths[(p*N)+n] = last;
-        }
+    int baseBlock = P / numThreads;
+    int remainder = P % numThreads;
+
+    int start = 0;
+    for (unsigned int t = 0; t < numThreads; ++t) {
+        int blockSize = baseBlock + (t < remainder ? 1 : 0);
+        int end = start + blockSize;
+
+        threads.emplace_back(
+            generatePathBlock,
+            std::ref(paths),
+            start,
+            end,
+            So,
+            N,
+            drift,
+            vol,
+            12345u + t
+        );
+
+        start = end;
+    }
+
+    for (auto& th : threads) {
+        th.join();
     }
 
     return paths;
@@ -96,7 +157,7 @@ std::vector<double> generatePricePathMatrix(int P, double So, double dt, int N, 
 
 double pricePutOption(double So, double T, int N, int P, double r, double v, double K, std::mt19937 &gen) {
     double dt = T / N;
-    std::vector<double> S = generatePricePathMatrix(P,So,dt,N,r,v,gen);
+    std::vector<double> S = generatePricePathMatrix(P,So,dt,N,r,v);
     std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
     std::vector<int> itm_indices;
     std::vector<double> X;
@@ -251,9 +312,80 @@ std::vector<std::vector<float>> select_random_samples(const std::string& filenam
     return std::vector<std::vector<float>>(all_data.begin(), all_data.begin() + sample_size);
 }
 
-double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, std::string dataSet, int seed) {
+std::vector<std::vector<float>> read_all_samples(const std::string& filename) {
+    std::ifstream file(filename);
+    std::string line;
+    std::vector<std::vector<float>> all_data;
+
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file " << filename << std::endl;
+        return {};
+    }
+
+    // Read first non-empty line and detect whether it's header or data
+    std::string first_line;
+    while (std::getline(file, first_line)) {
+        if (!first_line.empty()) break;
+    }
+
+    if (first_line.empty()) return {};
+
+    auto try_parse_line = [](const std::string& ln, std::vector<float>& out) {
+        std::stringstream ss(ln);
+        std::string cell;
+        out.clear();
+
+        while (std::getline(ss, cell, ',')) {
+            try {
+                out.push_back(std::stof(cell));
+            } catch (...) {
+                return false;
+            }
+        }
+
+        return !out.empty();
+    };
+
+    std::vector<float> parsed;
+    bool first_is_data = try_parse_line(first_line, parsed);
+    if (first_is_data) {
+        all_data.push_back(parsed);
+    }
+
+    // Parse remaining lines
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+
+        std::vector<float> row_values;
+        if (try_parse_line(line, row_values)) {
+            all_data.push_back(row_values);
+        }
+    }
+
+    return all_data;
+}
+
+double runTestME(int paths, double stepsPerHour,double riskFreeRate,int samples, std::string dataSet, int seed) {
     std::mt19937 gen(seed);
     std::vector<std::vector<float>> S = select_random_samples(dataSet,samples,gen);
+
+    double sum = 0;
+    
+    #pragma omp parallel for
+    for (int i = 0; i<S.size(); i++) {
+        std::vector<float> row = S[i];
+        double T = row[4] / (365*24*60);
+        int N = (stepsPerHour * 365 * 24) * T;
+        sum += (std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1],gen) - row[2]) / row[2])*100;
+
+    }
+
+    return sum/samples;
+}
+
+double testAllME(int paths, double stepsPerHour,double riskFreeRate,int samples, std::string dataSet, int seed) {
+    std::mt19937 gen(seed);
+    std::vector<std::vector<float>> S = read_all_samples(dataSet);
 
     double sum = 0;
     
@@ -272,34 +404,31 @@ double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, st
 int main() {
     double riskFreeRate = 0.04;
 
-    int numTests = 10;
-    int numSamples = 30;
-    std::vector<double> pathSched = {10,50,100,250,500,1000,5000};
-    std::vector<double> stepSched = {5,10,15,30,60};
+    int numTests = 1;
+    int numSamples = 200;
+    std::vector<double> pathSched = {10,100,1000,10000,100000,1000000};
+    std::vector<double> stepSched = {0.1,0.5,1,5,10,15};
 
     //PRESENT DATA SET CHOICE
     std::string dataSet = "TestData/FridayPutSpread_MSFT.csv";
 
-    std::ofstream file("data.csv", std::ios::app);
-    for (int z = 0; z<8; z++) {
-        for (int n = 0; n<5; n++) {
-            double elapsedSum = 0;
-            double resultSum = 0;
-            for (int t = 0; t<numTests; t++) {
-                int seed = current_minute();
-                auto start = std::chrono::high_resolution_clock::now();
-                double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,seed);
-                auto end = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double> elapsed = end - start;
+    std::ofstream file("tests/ITM_T4.csv", std::ios::app);
+    for (int z = 0; z<pathSched.size(); z++) {
+        for (int n = 0; n<stepSched.size(); n++) {
+            
+            int seed = current_minute();
+            auto start = std::chrono::high_resolution_clock::now();
+            double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,seed);
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> elapsed = end - start;
 
-                elapsedSum += elapsed.count();
-                resultSum += result;
-            }
-            file << pathSched[z] << "," << stepSched[n] << "," << resultSum/numTests << "," << elapsedSum/numTests << "\n";
+            file << pathSched[z] << "," << stepSched[n] << "," << result/numSamples << "," << elapsed.count()/numSamples << "\n";
             file.flush();
         }
     }
     file.close();
-
     return 0;
 }
+
+
+

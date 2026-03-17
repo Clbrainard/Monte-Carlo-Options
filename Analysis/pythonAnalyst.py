@@ -8,58 +8,63 @@ from matplotlib.colors import LogNorm, LinearSegmentedColormap
 # =========================
 # CSV format:
 # paths,stepsPerHour,meanError,time
-df = pd.read_csv("data.csv")
+df = pd.read_csv(r"tests\ITM_T4.csv")
 
 # =========================
-# 2. Scale time by 1800
+# 2. Aggregate duplicates by taking mean
 # =========================
-df["scaledTime"] = df["time"] / 1800.0
+df = df.groupby(['paths', 'stepsPerHour']).agg({
+    'meanError': 'mean',
+    'time': 'mean'
+}).reset_index()
 
 # =========================
 # 3. Set column names
 # =========================
 x_col = "paths"
 y_col = "stepsPerHour"
-label_col = "meanError"     # shown inside square
-color_col = "scaledTime"    # used for square color
+label_col = "meanError"        # shown inside square
+color_col = "meanError"        # used for square color
+time_display_col = "time"      # shown inside square
 
 # =========================
 # 4. Build pivot tables
 # =========================
-time_pivot = df.pivot(index=y_col, columns=x_col, values=color_col)
+color_pivot = df.pivot(index=y_col, columns=x_col, values=color_col)
 error_pivot = df.pivot(index=y_col, columns=x_col, values=label_col)
+raw_time_pivot = df.pivot(index=y_col, columns=x_col, values=time_display_col)
 
-time_pivot = time_pivot.sort_index().sort_index(axis=1)
-error_pivot = error_pivot.reindex(index=time_pivot.index, columns=time_pivot.columns)
+color_pivot = color_pivot.sort_index().sort_index(axis=1)
+error_pivot = error_pivot.reindex(index=color_pivot.index, columns=color_pivot.columns)
+raw_time_pivot = raw_time_pivot.reindex(index=color_pivot.index, columns=color_pivot.columns)
 
-X_labels = time_pivot.columns.values
-Y_labels = time_pivot.index.values
-Z_time = time_pivot.values
+X_labels = color_pivot.columns.values
+Y_labels = color_pivot.index.values
+Z_color = color_pivot.values
 Z_error = error_pivot.values
+Z_raw_time = raw_time_pivot.values
 
 # =========================
-# 5. Create one-color colormap
+# 5. Create green -> red colormap
+# Green = low error, Red = high error
 # =========================
-# light -> dark blue
-single_color_cmap = LinearSegmentedColormap.from_list(
+color_cmap = LinearSegmentedColormap.from_list(
     "single_blue",
     ["#eef4ff", "#c6dbff", "#7fb3ff", "#2f7df6", "#0b3d91"]
 )
-
 # =========================
 # 6. Plot heatmap
 # =========================
 fig, ax = plt.subplots(figsize=(10, 6))
 
-# Log scale makes differences more visible across wide ranges
-min_positive = np.nanmin(Z_time[Z_time > 0])
-max_val = np.nanmax(Z_time)
+min_positive = np.nanmin(Z_color[Z_color > 0])
+max_val = np.nanmax(Z_color)
 
 im = ax.imshow(
-    Z_time,
+    Z_color,
     origin="lower",
     aspect="auto",
-    cmap=single_color_cmap,
+    cmap=color_cmap,
     norm=LogNorm(vmin=min_positive, vmax=max_val)
 )
 
@@ -73,34 +78,39 @@ ax.set_yticklabels(Y_labels)
 
 ax.set_xlabel("paths")
 ax.set_ylabel("stepsPerHour")
-ax.set_title("Mean Error Labels with Scaled Time Color")
+ax.set_title("Mean Error Color Map with Time Underneath")
 
 # =========================
 # 8. Colorbar
 # =========================
 cbar = plt.colorbar(im, ax=ax)
-cbar.set_label("time / 1800")
+cbar.set_label("mean error")
+
 
 # =========================
-# 9. Write meanError inside each square
+# 9. Write meanError and time inside each square
 # =========================
 log_mid = np.sqrt(min_positive * max_val)
 
 for i in range(len(Y_labels)):
     for j in range(len(X_labels)):
         err_val = Z_error[i, j]
-        time_val = Z_time[i, j]
+        color_val = Z_color[i, j]
+        raw_time_val = Z_raw_time[i, j]
 
-        if pd.isna(err_val) or pd.isna(time_val):
+        if pd.isna(err_val) or pd.isna(color_val) or pd.isna(raw_time_val):
             continue
+
+        text_color = "white" if color_val > log_mid else "black"
 
         ax.text(
             j,
             i,
-            f"{err_val:.2f}%",
+            f"{err_val * 100:.2f}%\n{raw_time_val:.2f}s",
             ha="center",
             va="center",
-            color="white" if time_val > log_mid else "black"
+            color=text_color,
+            fontsize=9
         )
 
 plt.tight_layout()

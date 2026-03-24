@@ -34,6 +34,43 @@ int current_minute() {
         return local->tm_min;
 }
 
+/*
+TYPES
+1 = Linear
+2 = Quadratic
+3 = 2nd degree Leandre
+4 = 2nd degree Hermite
+5 = 2nd degree Laguerre
+DEGREES
+0 = a_0 coeff
+1 = a_1 coeff
+2 = a_2 coeff
+*/
+double basisSet(int type, int degree, double x){
+    if (degree == 0) {
+        return 1;
+    } else if (type == 1)
+        if (degree < 5) {
+            return x;
+        } else if (type == 5) {
+            return std::exp(-x/2) * (1-x); // laguerre
+        }
+    else {
+        if (type == 1) {
+            return 0;
+        } else if (type ==2) {
+            return x*x;
+        } else if (type == 3) {
+            return 0.5 * ((3*x*x) - 1); //leandre
+        } else if (type == 4) {
+            return x*x - 1; // hermite
+        } else {
+            return (std::exp(-x/2) * (1-(2*x)+(x*x*0.5))); // laguerre
+        }
+    }
+
+}
+
 std::vector<double> quadRegress(const std::vector<double>& X, const std::vector<double>& Y) {
     const int n = X.size();
 

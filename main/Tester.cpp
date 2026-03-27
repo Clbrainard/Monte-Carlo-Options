@@ -71,7 +71,7 @@ double basisSet(int type, int degree, double x){
 
 }
 
-std::vector<double> quadRegress(const std::vector<double>& X, const std::vector<double>& Y) {
+std::vector<double> quadRegress(const std::vector<double>& X, const std::vector<double>& Y, int regType) {
     const int n = X.size();
 
     double Sx = 0.0;

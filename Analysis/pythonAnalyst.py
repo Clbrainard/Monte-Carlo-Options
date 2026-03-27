@@ -8,7 +8,7 @@ from matplotlib.colors import LogNorm, LinearSegmentedColormap
 # =========================
 # CSV format:
 # paths,stepsPerHour,meanError,time
-df = pd.read_csv(r"tests\ITM_T4.csv")
+df = pd.read_csv(r"tests\ITM_T3.csv")
 
 # =========================
 # 2. Aggregate duplicates by taking mean

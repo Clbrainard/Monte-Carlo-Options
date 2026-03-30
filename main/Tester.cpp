@@ -7,7 +7,7 @@
 #include <cmath>
 #include <vector>
 #include <iterator>
-#include "Eigen/Dense"
+#include <Eigen/Dense>
 #include <omp.h>
 #include <ctime>
 #include <chrono>
@@ -36,85 +36,160 @@ int current_minute() {
 
 /*
 TYPES
-1 = Linear
-2 = Quadratic
-3 = 2nd degree Leandre
-4 = 2nd degree Hermite
-5 = 2nd degree Laguerre
-DEGREES
-0 = a_0 coeff
-1 = a_1 coeff
-2 = a_2 coeff
+1 = Polynomial Deg 2
+2 = Polynomial Deg 3
+3 = Leandre Deg 2
+4 = Leandre Deg 3
+5 = Hermite Deg 2
+5 = Hermite Deg 3
+6 = Laguerre Deg 2
+7 = Laguerre Deg 3
 */
-double basisSet(int type, int degree, double x){
-    if (degree == 0) {
-        return 1;
-    } else if (type == 1)
-        if (degree < 5) {
-            return x;
-        } else if (type == 5) {
-            return std::exp(-x/2) * (1-x); // laguerre
-        }
-    else {
-        if (type == 1) {
-            return 0;
-        } else if (type ==2) {
-            return x*x;
-        } else if (type == 3) {
-            return 0.5 * ((3*x*x) - 1); //leandre
-        } else if (type == 4) {
-            return x*x - 1; // hermite
-        } else {
-            return (std::exp(-x/2) * (1-(2*x)+(x*x*0.5))); // laguerre
-        }
-    }
+#include <vector>
+#include <cmath>
+#include <stdexcept>
 
+#include <vector>
+#include <functional>
+#include <cmath>
+#include <stdexcept>
+
+std::vector<std::function<double(double)>> basisSet(int type) {
+    using f = std::function<double(double)>;
+
+    switch(type) {
+
+        // Polynomial Deg 2
+        case 1:
+            return {
+                [](double x){ return 1.0; },
+                [](double x){ return x; },
+                [](double x){ return x*x; },
+                [](double x){ return 0.0; }
+            };
+
+        // Polynomial Deg 3
+        case 2:
+            return {
+                [](double x){ return 1.0; },
+                [](double x){ return x; },
+                [](double x){ return x*x; },
+                [](double x){ return x*x*x; }
+            };
+
+        // Legendre Deg 2
+        case 3:
+            return {
+                [](double x){ return 1.0; },
+                [](double x){ return x; },
+                [](double x){ return (3*x*x - 1)/2.0; },
+                [](double x){ return 0.0; }
+            };
+
+        // Legendre Deg 3
+        case 4:
+            return {
+                [](double x){ return 1.0; },
+                [](double x){ return x; },
+                [](double x){ return (3*x*x - 1)/2.0; },
+                [](double x){ return (5*x*x*x - 3*x)/2.0; }
+            };
+
+        // Hermite Deg 2
+        case 5:
+            return {
+                [](double x){ return 1.0; },
+                [](double x){ return x; },
+                [](double x){ return x*x - 1.0; },
+                [](double x){ return 0.0; }
+            };
+
+        // Hermite Deg 3
+        case 6:
+            return {
+                [](double x){ return 1.0; },
+                [](double x){ return x; },
+                [](double x){ return x*x - 1.0; },
+                [](double x){ return x*x*x - 3*x; }
+            };
+
+        // Laguerre Deg 2
+        case 7:
+            return {
+                [](double x){ return std::exp(-x/2.0); },
+                [](double x){ return std::exp(-x/2.0)*(1 - x); },
+                [](double x){ return std::exp(-x/2.0)*(1 - 2*x + x*x/2.0); },
+                [](double x){ return 0.0; }
+            };
+
+        // Laguerre Deg 3
+        case 8:
+            return {
+                [](double x){ return std::exp(-x/2.0); },
+                [](double x){ return std::exp(-x/2.0)*(1 - x); },
+                [](double x){ return std::exp(-x/2.0)*(1 - 2*x + x*x*0.5); },
+                [](double x){ return std::exp(-x/2.0)*(1 - 3*x + 1.5*x*x - x*x*x/6.0); }
+            };
+
+        default:
+            throw std::invalid_argument("Invalid basis type");
+    }
 }
 
-std::vector<double> quadRegress(const std::vector<double>& X, const std::vector<double>& Y, int regType) {
+std::vector<double> regress(const std::vector<double>& X, const std::vector<double>& Y, int regType) {
     const int n = X.size();
 
-    double Sx = 0.0;
-    double Sx2 = 0.0;
-    double Sx3 = 0.0;
-    double Sx4 = 0.0;
-    double Sy = 0.0;
-    double Sxy = 0.0;
-    double Sx2y = 0.0;
+    auto basis = basisSet(regType);
 
-    for (int i = 0; i < n; ++i) {
-        const double xi = X[i];
-        const double yi = Y[i];
+    double B11 = 0.0;
+    double B12 = 0.0;
+    double B13 = 0.0;
+    double B14 = 0.0;
+    double B22 = 0.0;
+    double B23 = 0.0;
+    double B24 = 0.0;
+    double B33 = 0.0;
+    double B34 = 0.0;
+    double B44 = 0.0;
+    double S0 = 0.0;
+    double S1 = 0.0;
+    double S2 = 0.0;
+    double S3 = 0.0;
 
-        const double x2 = xi * xi;
-        const double x3 = x2 * xi;
-        const double x4 = x3 * xi;
-
-        Sx   += xi;
-        Sx2  += x2;
-        Sx3  += x3;
-        Sx4  += x4;
-
-        Sy   += yi;
-        Sxy  += xi * yi;
-        Sx2y += x2 * yi;
+    for (int i = 0; i < n; i++) {
+        double x = X[i];
+        double y = Y[i];
+        double bas0 = basis[0](x);
+        double bas1 = basis[1](x);
+        double bas2 = basis[2](x);
+        double bas3 = basis[3](x);
+        B11 += bas0 * bas0;
+        B12 += bas0 * bas1;
+        B13 += bas0 * bas2;
+        B14 += bas0 * bas3;
+        B22 += bas1 * bas1;
+        B23 += bas1 * bas2;
+        B24 += bas1 * bas3;
+        B33 += bas2 * bas2;
+        B34 += bas2 * bas3;
+        B44 += bas3 * bas3;
+        S0 += bas0 * y;
+        S1 += bas1 * y;
+        S2 += bas2 * y;
+        S3 += bas3 * y;
     }
 
-    Eigen::Matrix3d A;
-    A << n,   Sx,  Sx2,
-         Sx,  Sx2, Sx3,
-         Sx2, Sx3, Sx4;
+    Eigen::Matrix4d A;
+    A << B11,   B12,  B13,  B14,
+         B12,   B22,  B23,  B24,
+         B13,   B23,  B33,  B34,
+         B14,   B24,  B34,  B44;
 
-    Eigen::Vector3d b(Sy, Sxy, Sx2y);
+    Eigen::Vector4d b(S0, S1, S2, S3);
 
-    Eigen::LLT<Eigen::Matrix3d> llt(A);
-    if (llt.info() != Eigen::Success) {
-        throw std::runtime_error("Cholesky failed (matrix not SPD)");
-    }
+    Eigen::Vector4d c = A.colPivHouseholderQr().solve(b);
 
-    Eigen::Vector3d c = llt.solve(b);
-
-    return {c(0), c(1), c(2)};
+    return {c(0), c(1), c(2), c(3)};
 }
 
 void generatePathBlock(
@@ -192,7 +267,9 @@ std::vector<double> generatePricePathMatrix(
 //          PUT IMPLEMENTATION
 //############################################
 
-double pricePutOption(double So, double T, int N, int P, double r, double v, double K, std::mt19937 &gen) {
+double pricePutOption(
+    double So, double T, int N, int P, double r, double v, double K, std::mt19937 &gen, int regType
+) {
     double dt = T / N;
     std::vector<double> S = generatePricePathMatrix(P,So,dt,N,r,v);
     std::vector<std::vector<double>> C(P, std::vector<double>(N, 0.0));
@@ -238,7 +315,7 @@ double pricePutOption(double So, double T, int N, int P, double r, double v, dou
         bool useReg = X.size() >2;
         if (useReg) {
             try {
-                std::vector<double> solution  = quadRegress(X,Y);
+                std::vector<double> solution  = regress(X,Y,regType);
                 c_coeff = solution[0];
                 b_coeff = solution[1];
                 a_coeff = solution[2];
@@ -402,7 +479,7 @@ std::vector<std::vector<float>> read_all_samples(const std::string& filename) {
     return all_data;
 }
 
-double runTestME(int paths, double stepsPerHour,double riskFreeRate,int samples, std::string dataSet, int seed) {
+double runTestME(int paths, double stepsPerHour,double riskFreeRate,int samples, std::string dataSet, int seed, int regType) {
     std::mt19937 gen(seed);
     std::vector<std::vector<float>> S = select_random_samples(dataSet,samples,gen);
 
@@ -413,25 +490,7 @@ double runTestME(int paths, double stepsPerHour,double riskFreeRate,int samples,
         std::vector<float> row = S[i];
         double T = row[4] / (365*24*60);
         int N = (stepsPerHour * 365 * 24) * T;
-        sum += (std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1],gen) - row[2]) / row[2])*100;
-
-    }
-
-    return sum/samples;
-}
-
-double testAllME(int paths, double stepsPerHour,double riskFreeRate,int samples, std::string dataSet, int seed) {
-    std::mt19937 gen(seed);
-    std::vector<std::vector<float>> S = read_all_samples(dataSet);
-
-    double sum = 0;
-    
-    #pragma omp parallel for
-    for (int i = 0; i<S.size(); i++) {
-        std::vector<float> row = S[i];
-        double T = row[4] / (365*24*60);
-        int N = (stepsPerHour * 365 * 24) * T;
-        sum += (std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1],gen) - row[2]) / row[2])*100;
+        sum += (std::abs(pricePutOption(row[0],T,N,paths,riskFreeRate,row[3],row[1],gen,regType) - row[2]) / row[2])*100;
 
     }
 
@@ -441,28 +500,43 @@ double testAllME(int paths, double stepsPerHour,double riskFreeRate,int samples,
 int main() {
     double riskFreeRate = 0.04;
 
-    int numTests = 1;
-    int numSamples = 200;
-    std::vector<double> pathSched = {10,100,1000,10000,100000,1000000};
-    std::vector<double> stepSched = {0.1,0.5,1,5,10,15};
+    /*
+    TYPES
+    1 = Polynomial Deg 2
+    2 = Polynomial Deg 3
+    3 = Leandre Deg 2
+    4 = Leandre Deg 3
+    5 = Hermite Deg 2
+    5 = Hermite Deg 3
+    6 = Laguerre Deg 2
+    7 = Laguerre Deg 3
+    */
+    int numSamples = 5;
+    std::vector<double> regSched = {1,2,3,4,5,6,7};
+    std::vector<double> pathSched = {1000,10000,100000,1000000};
+    std::vector<double> stepSched = {1};
+    int seed = 10;//current_minute();
 
     //PRESENT DATA SET CHOICE
-    std::string dataSet = "TestData/FridayPutSpread_MSFT.csv";
+    std::string dataSet = "TestData/FridayPutSpread_MSFT-ITM.csv";
 
-    std::ofstream file("tests/ITM_T4.csv", std::ios::app);
+    std::ofstream file("tests/ITM_T6.csv", std::ios::app);
     for (int z = 0; z<pathSched.size(); z++) {
-        for (int n = 0; n<stepSched.size(); n++) {
-            
-            int seed = current_minute();
-            auto start = std::chrono::high_resolution_clock::now();
-            double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,seed);
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
+        for (int n = 0; n < stepSched.size(); n++) {
+            for (int a = 0; a < regSched.size(); a++) {
+                    
+                    
+                auto start = std::chrono::high_resolution_clock::now();
+                double result = runTestME(pathSched[z],stepSched[n],riskFreeRate,numSamples,dataSet,seed,regSched[a]);
+                auto end = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> elapsed = end - start;
 
-            file << pathSched[z] << "," << stepSched[n] << "," << result/numSamples << "," << elapsed.count()/numSamples << "\n";
-            file.flush();
+                file << pathSched[z] << "," << stepSched[n] << "," << result << "," << elapsed.count()/numSamples << "," << regSched[a] << "\n";
+                file.flush();
+            }
         }
     }
+     
     file.close();
     return 0;
 }

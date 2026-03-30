@@ -1,117 +1,103 @@
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm, LinearSegmentedColormap
+import numpy as np
 
-# =========================
-# 1. Read CSV
-# =========================
-# CSV format:
-# paths,stepsPerHour,meanError,time
-df = pd.read_csv(r"tests\ITM_T3.csv")
-
-# =========================
-# 2. Aggregate duplicates by taking mean
-# =========================
-df = df.groupby(['paths', 'stepsPerHour']).agg({
-    'meanError': 'mean',
-    'time': 'mean'
-}).reset_index()
-
-# =========================
-# 3. Set column names
-# =========================
-x_col = "paths"
-y_col = "stepsPerHour"
-label_col = "meanError"        # shown inside square
-color_col = "meanError"        # used for square color
-time_display_col = "time"      # shown inside square
-
-# =========================
-# 4. Build pivot tables
-# =========================
-color_pivot = df.pivot(index=y_col, columns=x_col, values=color_col)
-error_pivot = df.pivot(index=y_col, columns=x_col, values=label_col)
-raw_time_pivot = df.pivot(index=y_col, columns=x_col, values=time_display_col)
-
-color_pivot = color_pivot.sort_index().sort_index(axis=1)
-error_pivot = error_pivot.reindex(index=color_pivot.index, columns=color_pivot.columns)
-raw_time_pivot = raw_time_pivot.reindex(index=color_pivot.index, columns=color_pivot.columns)
-
-X_labels = color_pivot.columns.values
-Y_labels = color_pivot.index.values
-Z_color = color_pivot.values
-Z_error = error_pivot.values
-Z_raw_time = raw_time_pivot.values
-
-# =========================
-# 5. Create green -> red colormap
-# Green = low error, Red = high error
-# =========================
-color_cmap = LinearSegmentedColormap.from_list(
-    "single_blue",
-    ["#eef4ff", "#c6dbff", "#7fb3ff", "#2f7df6", "#0b3d91"]
-)
-# =========================
-# 6. Plot heatmap
-# =========================
-fig, ax = plt.subplots(figsize=(10, 6))
-
-min_positive = np.nanmin(Z_color[Z_color > 0])
-max_val = np.nanmax(Z_color)
-
-im = ax.imshow(
-    Z_color,
-    origin="lower",
-    aspect="auto",
-    cmap=color_cmap,
-    norm=LogNorm(vmin=min_positive, vmax=max_val)
-)
-
-# =========================
-# 7. Axis ticks / labels
-# =========================
-ax.set_xticks(np.arange(len(X_labels)))
-ax.set_yticks(np.arange(len(Y_labels)))
-ax.set_xticklabels(X_labels)
-ax.set_yticklabels(Y_labels)
-
-ax.set_xlabel("paths")
-ax.set_ylabel("stepsPerHour")
-ax.set_title("Mean Error Color Map with Time Underneath")
-
-# =========================
-# 8. Colorbar
-# =========================
-cbar = plt.colorbar(im, ax=ax)
-cbar.set_label("mean error")
+# read csv
 
 
-# =========================
-# 9. Write meanError and time inside each square
-# =========================
-log_mid = np.sqrt(min_positive * max_val)
 
-for i in range(len(Y_labels)):
-    for j in range(len(X_labels)):
-        err_val = Z_error[i, j]
-        color_val = Z_color[i, j]
-        raw_time_val = Z_raw_time[i, j]
+def table():
+    df = pd.read_csv("tests/ITM_T6.csv")
+    regtype_labels = {
+        1: "Poly d2",
+        2: "Poly d3",
+        3: "Legendre d2",
+        4: "Legendre d3",
+        5: "Hermite d2",
+        6: "Hermite d3",
+        7: "Laguerre d3"
+    }
 
-        if pd.isna(err_val) or pd.isna(color_val) or pd.isna(raw_time_val):
-            continue
+    steps_per_min = df["stepsPerMin"].iloc[0]
 
-        text_color = "white" if color_val > log_mid else "black"
+    # pivot
+    error_mat = df.pivot(index="paths", columns="Regtype", values="avgSamplePercentError")
+    runtime_mat = df.pivot(index="paths", columns="Regtype", values="avgSampleRuntime")
 
-        ax.text(
-            j,
-            i,
-            f"{err_val * 100:.2f}%\n{raw_time_val:.2f}s",
-            ha="center",
-            va="center",
-            color=text_color,
-            fontsize=9
-        )
+    error_mat = error_mat.sort_index().sort_index(axis=1)
+    runtime_mat = runtime_mat.sort_index().sort_index(axis=1)
 
-plt.tight_layout()
-plt.show()
+    # combine into strings
+    table_data = []
+    for i in range(error_mat.shape[0]):
+        row = []
+        for j in range(error_mat.shape[1]):
+            err = error_mat.iloc[i, j]
+            run = runtime_mat.iloc[i, j]
+            row.append(f"{err:.2f}%\n{run:.2f}s")
+        table_data.append(row)
+
+    # labels
+    col_labels = [regtype_labels.get(c, f"Type {c}") for c in error_mat.columns]
+    row_labels = error_mat.index.astype(str)
+
+    # plot table
+    fig, ax = plt.subplots(figsize=(12, 4))
+    ax.axis('off')
+
+    table = ax.table(
+        cellText=table_data,
+        rowLabels=row_labels,
+        colLabels=col_labels,
+        cellLoc='center',
+        loc='center'
+    )
+
+    # styling
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.8)
+
+    plt.title(f"LSM Regression Results (stepsPerMin = {steps_per_min})\nCell = Error% / Runtime")
+
+    plt.tight_layout()
+    plt.show()
+
+def errorGraph():
+    df = pd.read_csv("tests/ITM_T5.csv")
+    regtype_labels = {
+        1: "Poly d2",
+        2: "Poly d3",
+        3: "Legendre d2",
+        4: "Legendre d3",
+        5: "Hermite d2",
+        6: "Hermite d3",
+        7: "Laguerre d3"
+    }
+    
+    steps_per_min = df["stepsPerMin"].iloc[0]
+
+    df = df.sort_values(by=["Regtype", "paths"])
+
+    plt.figure(figsize=(8, 5))
+
+    for reg in sorted(df["Regtype"].unique()):
+        subset = df[df["Regtype"] == reg]
+        
+        x = subset["paths"].to_numpy()
+        y = subset["avgSamplePercentError"].to_numpy()
+        
+        plt.plot(x, y, marker='o', label=regtype_labels.get(reg, f"Type {reg}"))
+
+    #plt.xscale("log")
+    plt.xlabel("Number of Paths (log scale)")
+    plt.ylabel("Average Percent Error (%)")
+    plt.title(f"Error vs Paths by Regression Type (stepsPerMin = {steps_per_min})")
+
+    plt.legend()
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+
+    plt.tight_layout()
+    plt.show()
+
+table()

@@ -183,18 +183,10 @@ double runTestME(int paths, int stepsPerHour,double riskFreeRate,int samples, st
 
 The runTestME function returns the average percent error of the random samples extracted from the dataset. Included is also a function that returns the mean squared error (runTestMSE). In the repository is a dataset of Microsoft put options, along with others I am working on adding. There are mutliple CSV files for the same samples, such as the ITM dataset which includes only samples with a moneyness greater than 1. Each dataset includes dividend yield and moneyness along with the expected data.
 
-# 5. Other functions and helper scripts
+# 5. What is different about my implementation
 
-## DataExtractiomHelper\Yahoo Scraper.py
-Working on it's implementation
-
-## Analysis\pythonAnalyst.py
-Reads a result file from the tests folder and creates a heat map of test results, including error rate and runtime.
-
-## Tester.cpp main functions
-
-pricePutOption() uses the monte carlo algorithm to approximate an american option price given a set of information.
-
-runTestAllME() opens a csv and attempt to price all samples, then records percent error from a actual market price. Then it returns average percent error and average runtime.
+In the case that the model is ill conidtioned
+- if there is only one value for regression then it does nothing
+- if there is less values the degrees but more then one, it takes mean
 
 

@@ -123,21 +123,21 @@ int main() {
     6 = Asian Put
     */
 
-    int optType = 4;
+    int optType = 5;
 
     // Price simulation settings:
 
-    int numPaths = 100000;
+    int numPaths = 10000;
     int stepsPerYear = 365;
 
     // Location of test data csv dataframe with collumns:
     // Stock_Price,Risk_Free_Rate,Strike,Days_to_exp,Years_to_exp,Moneyness,Volatility,Actual_Price
 
-    std::string testSet = "Validation/EuropeanPuts.csv";
+    std::string testSet = "Validation/AsianCalls.csv";
 
     // Run Validation test: returns avg error
 
-    std::cout  << runTest(numPaths, stepsPerYear, testSet, regType, optType);
+    std::cout  << runTest(numPaths, stepsPerYear, testSet, regType, optType) << "\n";
     
 
 }

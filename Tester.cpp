@@ -85,8 +85,10 @@ double runTest(int numPaths, int stepsPerYear, std::string dataSet, int regType,
         switch (optType) {
             case 1: price = priceAmericanCall(Stock_Price, T, N, numPaths, r, vol, K, regType); break;
             case 2: price = priceAmericanPut(Stock_Price, T, N, numPaths, r, vol, K, regType);  break;
-            case 3: price = priceEuropeanCall(Stock_Price, T, numPaths, r, vol, K);    break;
-            case 4: price = priceEuropeanPut(Stock_Price, T, numPaths, r, vol, K);     break;
+            case 3: price = priceEuropeanCall(Stock_Price, T, numPaths, r, vol, K);         break;
+            case 4: price = priceEuropeanPut(Stock_Price, T, numPaths, r, vol, K);          break;
+            case 5: price = priceAsianCall(Stock_Price, T, N, numPaths, r, vol, K);         break;
+            case 6: price = priceAsianPut(Stock_Price, T, N, numPaths, r, vol, K);          break;
         }
 
         sum += (std::abs(price - real_price) / real_price) * 100;
@@ -117,6 +119,8 @@ int main() {
     2 = American Put
     3 = European Call
     4 = European Put
+    5 = Asian Call
+    6 = Asian Put
     */
 
     int optType = 4;

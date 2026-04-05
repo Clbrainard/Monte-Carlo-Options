@@ -15,3 +15,11 @@ double priceEuropeanCall(
 double priceEuropeanPut(
     double So, double T, int P, double r, double v, double K
 );
+
+double priceAsianCall(
+    double So, double T, int N, int P, double r, double v, double K
+);
+
+double priceAsianPut(
+    double So, double T, int N, int P, double r, double v, double K
+);

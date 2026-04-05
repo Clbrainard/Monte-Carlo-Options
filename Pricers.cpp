@@ -206,6 +206,7 @@ std::vector<double> regress(const std::vector<double>& X, const std::vector<doub
 //   GEOMETRIC BROWNIAN MOTION PATH SIMULATION
 //################################################
 
+//returns a matrix with N steps and 2*P paths (includes P antithetic)
 std::vector<double> generatePricePathMatrix(
     int P, double So, double dt, int N, double r, double v
 ) {
@@ -232,6 +233,7 @@ std::vector<double> generatePricePathMatrix(
     return paths;
 }
 
+//returns 2*P paths (includes P antithetic)
 std::vector<double> generatePricePathStep(
     int P, double So, double dt, double r, double v
 ) {
@@ -484,6 +486,54 @@ double priceEuropeanCall(
     return sum;
 }
 
+//############################################
+//    VANILLA ASIAN OPTION IMPLEMENTATION
+//############################################
 
+double priceAsianCall(
+    double So, double T, int N, int P, double r, double v, double K
+) {
+    
+    double dt = T / N;
+    std::vector<double> S = generatePricePathMatrix(P, So, dt, N, r, v);
+    P = P * 2;
+
+    double price = 0;
+
+    for (int p = 0; p<P; p++) {
+        double sum = 0;
+        for (int n=0; n<N; n++) {
+            sum += S[(p*N)+n];
+        }
+        
+        price += fmax((sum/N) - K, 0);
+    }
+    
+    return (price / P) * std::exp(-r * T);
+
+}
+
+double priceAsianPut(
+    double So, double T, int N, int P, double r, double v, double K
+) {
+    
+    double dt = T / N;
+    std::vector<double> S = generatePricePathMatrix(P, So, dt, N, r, v);
+    P = P * 2;
+
+    double price = 0;
+
+    for (int p = 0; p<P; p++) {
+        double sum = 0;
+        for (int n=0; n<N; n++) {
+            sum += S[(p*N)+n];
+        }
+        
+        price += fmax(K - (sum/N), 0);
+    }
+    
+    return (price / P) * std::exp(-r * T);
+
+}
 
 

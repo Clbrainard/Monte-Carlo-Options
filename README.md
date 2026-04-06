@@ -15,7 +15,8 @@ This repository is part of a larger portfolio implementing multiple American opt
 - American calls
 - European puts
 - European calls
-- Asian options 
+- Asian calls
+- Asian puts
 
 ---
 

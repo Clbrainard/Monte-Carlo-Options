@@ -3,7 +3,7 @@
 
 C++ implementation of the Least Squares Monte Carlo (LSM) algorithm for pricing American and path-dependent options. LSM works by backwards induction over simulated GBM price paths, fitting a regression at each time step to approximate the continuation value and determine when early exercise is optimal. See Longstaff & Schwartz (2001).
 
-Part of a larger portfolio of option pricing implementations, including a [binomial tree pricer](https://github.com/Clbrainard/Binomial-Options). For more detailed information on the LSM Monte Carlo method for American options look [here](https://github.com/Clbrainard/Monte-Carlo-Options/notes.pdf)
+Part of a larger portfolio of option pricing implementations, including a [binomial tree pricer](https://github.com/Clbrainard/Binomial-Options). For more detailed information on the LSM Monte Carlo method for American options look [here](notes.pdf)
 
 ---
 

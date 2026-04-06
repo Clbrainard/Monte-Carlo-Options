@@ -5,7 +5,7 @@
 
 This repository implements the Least Squares Monte Carlo (LSM) algorithm for pricing American and path-dependent options in C++. LSM prices American options by backwards induction over simulated price paths, using least-squares regression at each time step to estimate the continuation value. See Longstaff & Schwartz (2001) for the original formulation.
 
-This repository is part of a larger portfolio implementing multiple American option pricing methods, including a [binomial tree pricer](https://github.com/clbra/Binomial-Tree-Options) and a forthcoming neural network pricer.
+This repository is part of a larger portfolio implementing multiple American option pricing methods, including a [binomial tree pricer](https://github.com/clbra/Binomial-Options) and a forthcoming neural network pricer.
 
 ---
 

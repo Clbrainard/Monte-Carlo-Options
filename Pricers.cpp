@@ -535,5 +535,3 @@ double priceAsianPut(
     return (price / P) * std::exp(-r * T);
 
 }
-
-

@@ -1,51 +1,56 @@
 
 # Least Squares Monte Carlo Option Pricer
 
-> **Technical notes** — implementation details, numerical analysis, and findings are documented in the accompanying PDF (`notes.pdf`). This README provides a brief overview only.
+C++ implementation of the Least Squares Monte Carlo (LSM) algorithm for pricing American and path-dependent options. LSM works by backwards induction over simulated GBM price paths, fitting a regression at each time step to approximate the continuation value and determine when early exercise is optimal. See Longstaff & Schwartz (2001).
 
-This repository implements the Least Squares Monte Carlo (LSM) algorithm for pricing American and path-dependent options in C++. LSM prices American options by backwards induction over simulated price paths, using least-squares regression at each time step to estimate the continuation value. See Longstaff & Schwartz (2001) for the original formulation.
+Part of a larger portfolio of option pricing implementations, including a [binomial tree pricer](https://github.com/clbra/Binomial-Tree-Options).
 
-This repository is part of a larger portfolio implementing multiple American option pricing methods, including a [binomial tree pricer](https://github.com/clbra/Binomial-Tree-Options) and a forthcoming neural network pricer.
+> Implementation details and numerical analysis are in `notes.pdf`.
 
 ---
 
 ## Supported Instruments
 
-- American puts
-- American calls
-- European puts
-- European calls
-- Asian options 
+| Instrument | Method |
+|---|---|
+| American put / call | LSM backwards induction |
+| European put / call | Discounted payoff average |
+| Asian put / call (arithmetic) | Discounted average-price payoff |
 
 ---
 
 ## Validation
 
-Results are benchmarked against QuantLib's finite difference engine (`FdBlackScholesVanillaEngine`) using a 3200×3200 time/asset grid as the reference solution. Validation datasets are in `Validation/` ([AmericanCalls.csv](Validation/AmericanCalls.csv), [AmericanPuts.csv](Validation/AmericanPuts.csv), [EuropeanCalls.csv](Validation/EuropeanCalls.csv), [EuropeanPuts.csv](Validation/EuropeanPuts.csv), [AsianCalls.csv](Validation/AsianCalls.csv), [AsianPuts.csv](Validation/AsianPuts.csv)) and results can be reproduced via [Validation/quantlibTester.py](Validation/quantlibTester.py).
+Benchmarked against QuantLib's finite difference engine (`FdBlackScholesVanillaEngine`) on a 3200×3200 grid. Validation datasets and the generation script are in `Validation/`. Tables show MAPE (%).
 
-**American options** — MAPE convergence across path/step configurations (benchmarked against FD 3200×3200 grid)
+**American options**
 
-| Instrument | 1000P / 50N | 5000P / 100N | 10000P / 200N |
+| | 500 paths / 25 steps | 1000 paths / 50 steps | 5000 paths / 250 steps |
 |---|---|---|---|
-| American puts | *[fill in]* | *[fill in]* | *[fill in]* |
-| American calls | *[fill in]* | *[fill in]* | *[fill in]* |
+| Put | 2.942 | 2.105 | 1.465 |
+| Call | 3.338 | 2.317 | 0.971 |
 
-**European & Asian options** (benchmarked against FD 3200×3200 grid)
+**Asian options** (255 steps)
 
-| Instrument | MAPE for 1000P |
-|---|---|
-| European puts | *[fill in]* |
-| European calls | *[fill in]* |
-| Asian puts | *[fill in]* |
-| Asian calls | *[fill in]* |
+| | 1 000 paths | 10 000 paths | 100 000 paths |
+|---|---|---|---|
+| Put | 3.190 | 1.518 | 0.874 |
+| Call | 3.335 | 1.877 | 1.001 |
 
-*[Convergence plot placeholder]*
+**European options**
+
+| | 1 000 paths | 10 000 paths |
+|---|---|---|
+| Put | 2.037 | 0.710 |
+| Call | 2.401 | 0.765 |
 
 ---
 
 ## Key Findings
 
-*[Fill in your observations — e.g., convergence rate with respect to path count, basis function sensitivity, early exercise premium behavior, comparison to Table 1 of Longstaff & Schwartz (2001), etc.]*
+All instruments converge steadily as path count increases. European and Asian options show roughly a 3× error reduction for a 10× increase in paths, broadly consistent with Monte Carlo's $1/\sqrt{P}$ rate. American options improve with both path count and step count — going from 500P/25N to 5000P/250N reduces MAPE by half for puts and by two-thirds for calls.
+
+Asian options reach sub-1% MAPE at 100 000 paths. European options reach it at 10 000 paths. American options have the additional discretisation error from the backwards induction sweep, so they require both more paths and more steps (the 1.465% / 0.971% figures above are at 250 steps).
 
 ---
 
@@ -54,12 +59,22 @@ Results are benchmarked against QuantLib's finite difference engine (`FdBlackSch
 ```cpp
 #include "Pricers.h"
 
-// Price an American put
-// Args: S0, T (years), N (steps), P (paths), r, sigma, K, q (dividend yield)
-double price = priceAmericanPut(100.0, 1.0, 50, 10000, 0.06, 0.20, 100.0, 0.0);
+// American — S0, T (years), N (steps), P (paths), r, sigma, K, regType
+// regType: 1=Poly-2  2=Poly-3  3=Legendre-2  4=Legendre-3
+//          5=Hermite-2  6=Hermite-3  7=Laguerre-2  8=Laguerre-3
+double put  = priceAmericanPut (100.0, 1.0, 50, 10000, 0.06, 0.20, 100.0, 1);
+double call = priceAmericanCall(100.0, 1.0, 50, 10000, 0.06, 0.20, 100.0, 1);
+
+// European — S0, T (years), P (paths), r, sigma, K
+double eu_put  = priceEuropeanPut (100.0, 1.0, 10000, 0.06, 0.20, 100.0);
+double eu_call = priceEuropeanCall(100.0, 1.0, 10000, 0.06, 0.20, 100.0);
+
+// Asian — S0, T (years), N (steps), P (paths), r, sigma, K
+double asian_put  = priceAsianPut (100.0, 1.0, 255, 10000, 0.06, 0.20, 100.0);
+double asian_call = priceAsianCall(100.0, 1.0, 255, 10000, 0.06, 0.20, 100.0);
 ```
 
-Build with a C++17-compatible compiler. Eigen is included as a header-only dependency.
+Requires a C++17 compiler. Eigen is bundled as a header-only dependency.
 
 ---
 

@@ -61,6 +61,31 @@ std::vector<std::vector<float>> read_all_samples(const std::string& filename) {
     return all_data;
 }
 
+int readPositiveIntInput(const std::string& label, int defaultValue) {
+    while (true) {
+        std::cout << label << " [default: " << defaultValue << "]: ";
+
+        std::string input;
+        if (!std::getline(std::cin, input)) {
+            return defaultValue;
+        }
+
+        if (input.empty()) {
+            return defaultValue;
+        }
+
+        std::stringstream parser(input);
+        int value = 0;
+        char trailing = '\0';
+
+        if ((parser >> value) && !(parser >> trailing) && value > 0) {
+            return value;
+        }
+
+        std::cout << "Please enter a positive integer.\n";
+    }
+}
+
 //##########################################################
     //    TESTING
 //###########################################################
@@ -127,17 +152,20 @@ int main() {
 
     // Price simulation settings:
 
-    int numPaths = 10000;
-    int stepsPerYear = 365;
+    int numPaths = readPositiveIntInput("Enter number of Monte Carlo paths", 1000);
+    int stepsPerYear = readPositiveIntInput("Enter number of steps per year", 1000);
 
     // Location of test data csv dataframe with collumns:
     // Stock_Price,Risk_Free_Rate,Strike,Days_to_exp,Years_to_exp,Moneyness,Volatility,Actual_Price
 
-    std::string testSet = "Validation/AsianCalls.csv";
+    //std::string testSet = "Validation/AmericanCalls.csv";
 
     // Run Validation test: returns avg error
 
-    std::cout  << runTest(numPaths, stepsPerYear, testSet, regType, optType) << "\n";
+    //std::cout  << runTest(numPaths, stepsPerYear, testSet, regType, optType) << "\n";
+
+    std::cout  << runTest(numPaths, stepsPerYear, "Validation/AsianCalls.csv", regType, 5) << "\n";
+    std::cout  << runTest(numPaths, stepsPerYear, "Validation/AsianPuts.csv", regType, 6) << "\n";
     
 
 }

@@ -58,8 +58,9 @@ Asian options reach sub-1% MAPE at 100 000 paths. European options reach it at 1
 #include "Pricers.h"
 
 // American — S0, T (years), N (steps), P (paths), r, sigma, K, regType
-// regType: 1=Poly-2  2=Poly-3  3=Legendre-2  4=Legendre-3
-//          5=Hermite-2  6=Hermite-3  7=Laguerre-2  8=Laguerre-3
+// regType: 
+//  1=Poly- deg2  2=Poly- deg3  3=Legendre- deg2  4=Legendre- deg3
+//  5=Hermite- deg2  6=Hermite- deg3  7=Laguerre- deg2  8=Laguerre- deg3
 double put  = priceAmericanPut (100.0, 1.0, 50, 10000, 0.06, 0.20, 100.0, 1);
 double call = priceAmericanCall(100.0, 1.0, 50, 10000, 0.06, 0.20, 100.0, 1);
 

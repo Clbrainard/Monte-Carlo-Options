@@ -5,8 +5,6 @@ C++ implementation of the Least Squares Monte Carlo (LSM) algorithm for pricing 
 
 Part of a larger portfolio of option pricing implementations, including a [binomial tree pricer](https://github.com/clbra/Binomial-Tree-Options).
 
-> Implementation details and numerical analysis are in `notes.pdf`.
-
 ---
 
 ## Supported Instruments
